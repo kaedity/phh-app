@@ -26,11 +26,12 @@ typealias SharedPlateAnalyzer = (Data, Data?, String) async throws -> SharedPlat
     } catch { store = nil; self.error = "一時保存を開けませんでした。" }
   }
   var hasStore: Bool { store != nil }
-  func change(_ action: (inout SharedPlateSession) throws -> Void) {
+  @discardableResult func change(_ action: (inout SharedPlateSession) throws -> Void) -> Bool {
     do {
-      guard var next = session, !next.expired(at: Date()) else { checkDeadline(); return }
+      guard var next = session, !next.expired(at: Date()) else { checkDeadline(); return false }
       try action(&next); try store?.save(next); session = next; error = ""
-    } catch { self.error = error.localizedDescription }
+      return true
+    } catch { self.error = error.localizedDescription; return false }
   }
   func capture(_ data: Data, after: Bool, date: String, slot: String) {
     do {
@@ -71,7 +72,12 @@ struct SharedPlatePage: View {
   @State private var saved = false
   @State private var task: Task<Void, Never>?
   @State private var photoTask: Task<Void, Never>?
-  @State private var editing: FoodItemSnapshot?
+  private struct ItemEditing: Identifiable {
+    let item: FoodItemSnapshot
+    let isNew: Bool
+    var id: String { item.id }
+  }
+  @State private var editing: ItemEditing?
   init(date: String, slot: String, analyze: SharedPlateAnalyzer?, preview: Bool,
        save: @escaping (FoodDraft, String, String, String) throws -> Void) {
     self.date = date; self.slot = slot; self.analyze = analyze; self.preview = preview; self.save = save
@@ -104,11 +110,11 @@ struct SharedPlatePage: View {
           }
           Section("2枚目がないとき") {
             if model.reminder { Text("食事開始から3時間です。食べた量を選んでください。") }
-            Button("全部食べた") { run(fraction: 1, manual: false) }
-            Button("半分くらい") { run(fraction: 0.5, manual: false) }
-            Button("自分で入力") { run(fraction: 1, manual: true) }
-            Text("選んだ時に1枚目を解析し、量を確認します。")
-          }.disabled(busy || analyze == nil)
+            Button("全部食べた") { run(fraction: 1, manual: false) }.disabled(analyze == nil)
+            Button("半分くらい") { run(fraction: 0.5, manual: false) }.disabled(analyze == nil)
+            Button("自分で入力") { model.change { $0.beginManualEntry() } }
+            Text("全部・半分は1枚目を解析します。「自分で入力」は写真を送らず、食品・量・栄養を入力します。")
+          }.disabled(busy)
         }
         if let draft = session.draft {
           draftSection(draft)
@@ -140,11 +146,15 @@ struct SharedPlatePage: View {
       if !model.error.isEmpty { Section { Text(model.error).foregroundStyle(.red).accessibilityIdentifier("plate-error") } }
     }.navigationTitle("大皿の前後写真").navigationBarTitleDisplayMode(.inline)
       .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
-      .sheet(item: $editing) { item in
-        NavigationStack { FoodDraftItemEditor(item: item) { next in
-          model.change { current in
-            if let i = current.draft?.items.firstIndex(where: { $0.id == item.id }) { current.draft?.items[i] = next }
+      .sheet(item: $editing) { selection in
+        NavigationStack { FoodDraftItemEditor(item: selection.item, newItem: selection.isNew, close: { editing = nil }) { next in
+          let accepted = model.change { current in
+            if selection.isNew {
+              guard let count = current.draft?.items.count, count < 50 else { throw FoodFailure.invalidValue }
+              current.draft?.items.append(next)
+            } else if let i = current.draft?.items.firstIndex(where: { $0.id == selection.item.id }) { current.draft?.items[i] = next }
           }
+          guard accepted else { throw FoodFailure.invalidValue }
         } }
       }
       .sheet(isPresented: $camera) { FoodCamera { data in
@@ -204,14 +214,21 @@ struct SharedPlatePage: View {
       }
     }
     Section("自分が食べた量 · 確認前") {
+      if draft.items.isEmpty { Text("食品はまだありません。食べた食品と量を入力してください。栄養が不明なら空欄のまま保存できます。") }
       ForEach(draft.items) { item in
-        Button { editing = item } label: {
+        Button { editing = ItemEditing(item: item, isNew: false) } label: {
           VStack(alignment: .leading) {
             Text(item.name).font(.headline)
             Text("\(foodNumber(item.quantity))\(item.unit) · \(foodNumber(item.nutrients.kcal)) kcal")
           }
         }.accessibilityIdentifier("plate-item")
       }
+      Button("食品を手入力", systemImage: "plus") {
+        do {
+          let item = try FoodItemSnapshot(name: "未入力", quantity: 1, unit: "g", source: "本人", nutrients: .init(kcal: nil, protein: nil, fat: nil, carbohydrate: nil))
+          editing = ItemEditing(item: item, isNew: true)
+        } catch { model.error = error.localizedDescription }
+      }.disabled(busy || draft.items.count >= 50)
       FoodTotalsView(total: .init(items: draft.items))
     }
     if !draft.uncertainty.isEmpty { Section("不確かな点") { ForEach(draft.uncertainty, id: \.self) { Text($0) } } }
@@ -260,6 +277,7 @@ struct SharedPlateLifetime: ViewModifier {
 @MainActor enum SharedPlatePreviewData {
   static func analyze(_ before: Data, _ after: Data?, _ note: String) async throws -> SharedPlateEstimate {
     try Task.checkCancellation()
+    if ProcessInfo.processInfo.arguments.contains("--manual-no-analysis") { throw FoodFailure.invalidValue }
     return try SharedPlateEstimate.decode(JSONEncoder().encode(SharedPlateEstimate(items: [
       .init(name: "合成大皿", before: 100, remaining: after == nil ? 0 : 40, unit: "g",
             nutrients: .init(kcal: 200, protein: nil, fat: 0, carbohydrate: 40), confidence: "中")

@@ -40,4 +40,41 @@ assert.deepEqual(JSON.parse(fs.readFileSync(__dirname+'/../Core/Sources/PHHHubCo
 
 
 test('published summary separates session state and keeps cancelled sets out',()=>{const s=fresh();intake(s,row('summary-set','記録'),2);intake(s,row('summary-cancel','取消','Pull','セッション','',''),3);const state=ctx.hubEmptyState_();ctx.hubLoadDate_(s,'2026-10-02',state);const text=ctx.intakeSummaryForHub_(state,'2026-10-02',now);assert.ok(text.includes('状態 cancelled'));assert.ok(!text.includes('undefined'));assert.ok(!text.includes('セット1'));});
+
+
+test('session-end block saves eighteen sets then two notes and completion with the registered slot',()=>{
+  const s=fresh(),op=cycleOp();assert.equal(app(s,op).status,'committed');
+  const names=['ベンチプレス','ポーズベンチプレス','ダンベルプレス','ショルダープレス','サイドレイズ','トライセプスプレスダウン'];
+  const rows=[];let n=1;
+  for(const name of names)for(let set=1;set<=3;set++)rows.push(row('20261010-2025-'+String(n++).padStart(2,'0'),'記録','Push',name,String(set),'重量kg=20; 回数=8'+(set===1?' ; RPE=7':'')));
+  rows.push(row('20261010-2025-'+String(n++).padStart(2,'0'),'補足','Push','ベンチプレス','','分類=身体状態; 発言者=本人','架空の補足'));
+  rows.push(row('20261010-2025-'+String(n++).padStart(2,'0'),'補足','Push','ベンチプレス','','分類=メニュー変更; 発言者=GPT','架空の提案'));
+  rows.push(row('20261010-2025-'+String(n++).padStart(2,'0'),'記録','Push','セッション','','状態=完了; CycleID='+op.entity_id+'; 予定枠='+op.entity_id+'#1; 開始時刻=2026-10-10T19:05:00+09:00; 終了時刻=2026-10-10T20:20:00+09:00'));
+  for(const r of rows)r[3]='2026-10-10';
+  const readRow=n=>rows[n-2],last=rows.length+1;
+  assert.equal(ctx.hubPollWork_(s,readRow,last,now).processed,20);s.commit();
+  const sid=ctx.hubP3SessionId_(s,'2026-10-10','Push');
+  assert.equal(s.tables.TrainingSessions.get(sid).lifecycle_state,'in_progress');
+  ctx.hubPollWork_(s,readRow,last,now+300000);s.commit();
+  const session=s.tables.TrainingSessions.get(sid);
+  assert.equal(session.lifecycle_state,'completed');assert.equal(session.plan_slot_id,op.entity_id+'#1');
+  assert.equal(s.tables.TrainingSets.size,18);assert.equal(s.tables.TrainingNotes.size,2);assert.equal(s.tables.Reviews.size,0);
+  assert.equal([...s.tables.TrainingSets.values()].filter(x=>x.rpe===null).length,12);
+  assert.equal([...s.tables.TrainingSets.values()].filter(x=>x.successful===null).length,18);
+  for(let i=0;i<rows.length;i++)assert.equal(intake(s,rows[i],i+30).status,'重複');
+  assert.equal(s.tables.TrainingSets.size,18);assert.equal(s.tables.TrainingNotes.size,2);
+});
+
+
+test('real cycle registration still requires the server real-data gate',()=>{
+ const op=cycleOp();op.synthetic=false;const s=fresh();
+ assert.throws(()=>app(s,op),/REAL_DATA_DISABLED/);assert.equal(s.tables.TrainingCycles.size,0);
+ s.config.real_data_enabled=true;assert.equal(app(s,op).status,'committed');
+ assert.equal(s.tables.TrainingCycles.size,1);assert.equal(s.tables.TrainingPlanSlots.size,9);
+ intake(s,row('real-session-fixture','記録'),2);
+ const sid=ctx.hubP3SessionId_(s,'2026-10-02','Pull'),edit={...meal(),synthetic:false,action:'update_training_session',entity_id:sid,expected_revision:1,payload:{lifecycle_state:'completed',cycle_id:null,plan_slot_id:null}};
+ s.config.real_data_enabled=false;assert.throws(()=>app(s,edit),/REAL_DATA_DISABLED/);
+ assert.equal(s.tables.TrainingSessions.get(sid).revision,1);
+ s.config.real_data_enabled=true;assert.equal(app(s,edit).status,'committed');
+});
 console.log('Training P3: '+passed+' PASSED');

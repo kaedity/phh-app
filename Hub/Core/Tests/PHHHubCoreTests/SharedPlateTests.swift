@@ -3,6 +3,19 @@ import Testing
 @testable import PHHHubCore
 
 struct SharedPlateTests {
+  @Test func manualEntryKeepsLocalPhotoAndStartsWithoutInventedFoods() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = try SharedPlatePhotoStore(directory: directory)
+    var session = try SharedPlateSession(before: Data([1, 2, 3]), date: "2026-10-04", slot: "昼食")
+    session.note = "自分の取り分を入力"; session.beginManualEntry()
+    try store.save(session)
+    let recovered = try #require(try store.load())
+    #expect(recovered.before == Data([1, 2, 3])); #expect(recovered.estimate == nil)
+    #expect(recovered.note == session.note); #expect(recovered.draft?.items.isEmpty == true)
+    #expect(FoodTotal.day("2026-10-04", meals: []).known[.kcal] == 0)
+    #expect(throws: FoodFailure.invalidValue) { try recovered.draft?.confirm(date: "2026-10-04", slot: "昼食") }
+  }
   let now = Date(timeIntervalSince1970: 1_800_000_000)
   func estimate(left: Double = 40) throws -> SharedPlateEstimate {
     .init(items: [.init(name: "合成大皿", before: 100, remaining: left, unit: "g",

@@ -106,6 +106,8 @@ struct TrainingCalendarPage: View {
     @State private var selected: String
     @State private var importing=false
     @State private var importMessage: String?
+    @State private var registeringCycle=false
+    @State private var showingCycleRecording=false
     init(snapshot:TrainingSnapshot,status:String,reference:TrainingCycleReference?=nil,date:Date=Date(),cycles:[TrainingCycleReference]=[],saveReference:((TrainingCycleReference) async -> String)?=nil,updateSession:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> String)?=nil) {
         self.snapshot=snapshot;self.status=status;self.cycles=cycles;self.saveReference=saveReference;self.updateSession=updateSession;_reference=State(initialValue:reference)
         _month=State(initialValue:TrainingDates.calendar.date(from:TrainingDates.calendar.dateComponents([.year,.month],from:date))!);_selected=State(initialValue:TrainingDates.string(date))
@@ -143,8 +145,16 @@ struct TrainingCalendarPage: View {
         }
         .fileImporter(isPresented:$importing,allowedContentTypes:[UTType(filenameExtension:"md") ?? .plainText,.plainText]) { result in
             do { let url=try result.get();let scoped=url.startAccessingSecurityScopedResource();defer { if scoped { url.stopAccessingSecurityScopedResource() } };let bytes=try Data(contentsOf:url)
-                reference=try TrainingCycleReference(name:url.deletingPathExtension().lastPathComponent,sourcePath:url.lastPathComponent,markdown:bytes);importMessage="計画の9枠を読み取りました。実績は変更していません。"
+                let imported=try TrainingCycleReference(name:url.deletingPathExtension().lastPathComponent,sourcePath:url.lastPathComponent,markdown:bytes)
+                reference=imported.matching(in:cycles) ?? imported
+                importMessage=imported.matching(in:cycles) == nil ? "計画の9枠を読み取りました。内容を確認してCycleを登録してください。" : "この計画は登録済みです。前のCycleIDを保持しました。"
             } catch { importMessage="計画を読み取れませんでした。Session 1〜9の見出しがあるmdを選んでください。前の参照を保持しています。" }
+        }
+        .onChange(of:cycles) { _, latest in
+            if let current=reference, let saved=current.matching(in:latest) { reference=saved }
+        }
+        .sheet(isPresented:$showingCycleRecording) {
+            if let reference { TrainingCycleRecordingPage(reference:reference) }
         }
     }
     private func sessionSubtitle(_ session: TrainingSession) -> String {
@@ -182,7 +192,14 @@ struct TrainingCalendarPage: View {
                 ProgressView(value:Double(completed.count),total:9).tint(pine)
                 MotionCycleGrid(slots: reference.slots, completed: completed)
             } else { Text("Cycleの計画").font(.headline);Text("計画mdの参照は未設定です").font(.subheadline).foregroundStyle(.secondary) }
-            if let reference,let saveReference,!cycles.contains(where:{$0.id==reference.id}) { Button("このCycleを登録") { Task { importMessage=await saveReference(reference) } }.buttonStyle(.borderedProminent) }
+            if let reference,cycles.contains(where:{$0.id==reference.id}) {
+                Button("計画md用の記録ブロック",systemImage:"doc.on.doc") { showingCycleRecording=true }.buttonStyle(.bordered).accessibilityIdentifier("cycle-recording-block")
+            } else if let reference,let saveReference {
+                Button { guard !registeringCycle else { return };registeringCycle=true;Task { importMessage=await saveReference(reference);registeringCycle=false } } label: {
+                    MotionSaveLabel(title:"このCycleを登録",busy:registeringCycle,saved:false)
+                }.buttonStyle(.borderedProminent).disabled(registeringCycle).accessibilityIdentifier("cycle-register")
+                Text("登録後の同期が終わると、計画mdへ貼るCycleIDと9枠のブロックをコピーできます。").font(.caption).foregroundStyle(.secondary)
+            }
             DisclosureGroup("計画mdの管理") {
                 VStack(alignment:.leading,spacing:10) {
                     Button("計画mdを参照",systemImage:"doc.text") { importing=true }.buttonStyle(.bordered)
@@ -193,6 +210,42 @@ struct TrainingCalendarPage: View {
         }
     }
 }
+
+struct TrainingCycleRecordingPage: View {
+    let reference:TrainingCycleReference
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied=false
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("登録したCycle") {
+                    Text(reference.name).font(.headline)
+                    Text(reference.id).font(.caption.monospaced()).textSelection(.enabled).accessibilityIdentifier("cycle-registered-id")
+                    Text("予定9枠 · \(reference.sourcePath)").font(.subheadline)
+                }
+                Section("計画mdへ貼り付ける") {
+                    Text("下のボタンでCycleID・9枠のID・Session終了後の記録手順をまとめてコピーします。次Cycleの計画mdへ、受付シートの書き込み先と列のルールと一緒に貼り付けてください。")
+                    Button { UIPasteboard.general.string=reference.recordingMarkdown;copied=true } label: {
+                        Label(copied ? "コピーしました" : "記録用ブロックをコピー",systemImage:copied ? "checkmark":"doc.on.doc").frame(maxWidth:.infinity,minHeight:44)
+                    }.accessibilityIdentifier("cycle-copy-recording")
+                    ShareLink(item:reference.recordingMarkdown) { Label("記録用ブロックを共有",systemImage:"square.and.arrow.up") }
+                }
+                Section("予定枠") { ForEach(reference.slots) { slot in
+                    VStack(alignment:.leading,spacing:4) {
+                        Text("\(slot.number) · \(slot.label)")
+                        Text(slot.id).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                } }
+                Section("参照した計画") {
+                    Text("保存されているハッシュは、登録時に選んだmdの版です。このブロックを追加しても、登録済みの計画や実績を自動変更しません。").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Cycleの記録準備").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement:.cancellationAction) { Button("閉じる") { dismiss() } } }
+        }
+    }
+}
+
 struct TrainingSessionPage: View {
     let snapshot: TrainingSnapshot, session: TrainingSession
     var cycles:[TrainingCycleReference]=[]

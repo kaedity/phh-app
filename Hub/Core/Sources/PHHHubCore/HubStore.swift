@@ -95,6 +95,22 @@ import CoreData
         if !obsolete.isEmpty {try atomic {for row in obsolete {context.delete(row)}}}
         return meals.sorted {$0.id<$1.id}
     }
+    public func acknowledgedTrainingCycles(confirmed:[TrainingCycleReference]) throws -> [TrainingCycleReference] {
+        let request=NSFetchRequest<NSManagedObject>(entityName:"Meta")
+        request.predicate=NSPredicate(format:"key BEGINSWITH %@","cycle_ack:")
+        var references:[TrainingCycleReference]=[],obsolete:[NSManagedObject]=[]
+        for row in try context.fetch(request) {
+            guard let key=row.value(forKey:"key") as? String,let text=row.value(forKey:"value") as? String else {throw HubError.invalidResponse}
+            let op=try JSONDecoder().decode(HubOperation.self,from:Data(text.utf8));try op.validate()
+            guard key=="cycle_ack:"+op.entity_id,let p=op.trainingCycle else {throw HubError.invalidResponse}
+            let value=TrainingCycleReference(id:op.entity_id,name:p.name,sourcePath:p.source_path,sha256:p.source_sha256,slots:p.slots.map {TrainingPlanSlot(id:op.entity_id+"#"+String($0.number),number:$0.number,label:$0.label,kind:TrainingKind(rawValue:$0.kind)!)})
+            if let canonical=confirmed.first(where:{$0.id==value.id}) {
+                guard canonical==value else {throw HubError.invalidResponse};obsolete.append(row)
+            } else {references.append(value)}
+        }
+        if !obsolete.isEmpty {try atomic {for row in obsolete {context.delete(row)}}}
+        return references.sorted {$0.id<$1.id}
+    }
     public var trainingContract: Int { get throws { Int(try meta("training_contract") ?? "0") ?? 0 } }
     public var cursor: Int { get throws { guard let value = try meta("cursor"), let n = Int(value), n >= 0 else { throw HubError.invalidResponse }; return n } }
     public var generation: Int { get throws { guard let value = try meta("generation"), let n = Int(value), n > 0 else { throw HubError.invalidResponse }; return n } }
@@ -254,6 +270,7 @@ import CoreData
                 try previous?.validate()
                 if (previous?.revision ?? 0)<meal.revision {try setMeta(key,String(decoding:encoder.encode(meal),as:UTF8.self))}
             }
+            if operation.trainingCycle != nil {try setMeta("cycle_ack:"+operation.entity_id,String(decoding:encoder.encode(operation),as:UTF8.self))}
             if let restored=try hydrationUndoRestoration(operation.id) {
                 guard restored.entity_id==operation.entity_id,restored.expected_revision==operation.hydration?.revision else {throw HubError.invalidOperation}
                 try insertQueued(restored)

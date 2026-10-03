@@ -174,8 +174,21 @@ import PHHHubCore
         do { try store.enqueue(operation); try reload(); message = "端末に保存しました・同期待ち"; await synchronize() } catch { message = error.localizedDescription }
     }
     func registerTrainingCycle(_ reference:TrainingCycleReference) async -> String {
-        guard !busy,trainingWriteEnabled else { return busy ? "同期しています。処理が終わってから保存してください。":"筋トレの保存接続は準備中です。参照は画面内だけです。" }
-        await queue(HubOperation(cycle:reference));return message
+        guard trainingWriteEnabled, let store else { return "筋トレの保存接続は準備中です。参照は画面内だけです。" }
+        do {
+            let result = try store.stageTrainingCycle(reference, synthetic: healthConfiguration()["RealDataEnabled"] as? Bool != true)
+            try reload()
+            switch result.state {
+            case .needsReview: return "同じ計画の登録が要確認です。その他の送信待ちで内容を確認してください。"
+            case .authentication: return "同じ計画は保存済みです。Googleへの再接続後に送信します。"
+            case .queued:
+                message = result.queuedNew ? "Cycleを端末に保存しました・同期待ち" : "同じ計画は同期待ちです。二重には登録しません。"
+                requestFoodSync()
+            case .received: message = "Googleへの保存は完了しました。記録用ブロックをコピーできます。"
+            case .confirmed: message = "この計画は登録済みです。記録用ブロックをコピーできます。"
+            }
+            return message
+        } catch { return error.localizedDescription }
     }
     func updateTrainingSession(_ session:TrainingSession,state:TrainingLifecycle,cycle:TrainingCycleReference?,slot:TrainingPlanSlot?) async -> String {
         guard !busy,trainingWriteEnabled,let row=try? store?.rows(table:"TrainingSessions").first(where:{$0.entityID==session.id}) else { return busy ? "同期しています。処理が終わってから保存してください。":"保存接続またはセッションを確認してください。" }
@@ -185,7 +198,8 @@ import PHHHubCore
         guard let store else { return }
         let trainingRows=try ["TrainingSessions","TrainingSets","TrainingNotes"].flatMap { try store.rows(table:$0) }
         let snapshot=try TrainingSnapshot(rows:trainingRows),currentRows=try store.rows(date:date),outbox=try store.pending()
-        let cycles=try TrainingCycleReference.read(rows:["TrainingCycles","TrainingPlanSlots"].flatMap { try store.rows(table:$0) }),enabled=try store.trainingContract==1
+        let confirmedCycles=try TrainingCycleReference.read(rows:["TrainingCycles","TrainingPlanSlots"].flatMap { try store.rows(table:$0) })
+        let cycles=confirmedCycles + (try store.acknowledgedTrainingCycles(confirmed:confirmedCycles)),enabled=try store.trainingContract==1
         healthReadEnabled = try store.healthReadEnabled
         try healthScreen?.refresh(date:date)
         let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("Hub/AutoSleep", isDirectory: true)

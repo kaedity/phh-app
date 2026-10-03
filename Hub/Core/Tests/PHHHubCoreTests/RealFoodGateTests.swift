@@ -24,7 +24,7 @@ import Testing
             #expect(throws: HubError.invalidOperation) { try mismatched.validate() }
         }
     }
-    @Test func legacyMealsTrainingAndPlanningStillRequireSynthetic() throws {
+    @Test func legacyMealsAndPlanningStaySyntheticWhileApprovedTrainingKeepsExplicitMarker() throws {
         var legacy = HubOperation(action: "confirm_meal", meal: SyntheticMeal(date: "2026-10-03"))
         legacy.synthetic = false
         #expect(throws: HubError.invalidOperation) { try legacy.validate() }
@@ -35,7 +35,11 @@ import Testing
         var training = HubOperation(sessionID: UUID().uuidString, revision: 1, state: .completed)
         try training.validate()
         training.synthetic = false
-        #expect(throws: HubError.invalidOperation) { try training.validate() }
+        try training.validate()
+        let decoded=try JSONDecoder().decode(HubOperation.self,from:JSONEncoder().encode(training))
+        #expect(decoded.synthetic==false);try decoded.validate()
+        training.approval_state="draft"
+        #expect(throws:HubError.invalidOperation) {try training.validate()}
     }
     @Test func realCatalogAndAdditionPersistMarkersAcrossRestartWithoutChangingDefaults() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

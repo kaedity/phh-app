@@ -99,6 +99,10 @@ public struct SharedPlateSession: Codable, Equatable, Sendable {
     for item in draft?.items ?? [] { try item.validate() }
   }
   public func expired(at now: Date) -> Bool { now.timeIntervalSince(createdAt) >= 12 * 3600 }
+  public mutating func beginManualEntry() {
+    estimate = nil
+    draft = .init(items: [])
+  }
   public mutating func takeReminder(at now: Date) -> Bool {
     guard !expired(at: now), !reminderAsked, after == nil, draft == nil, now.timeIntervalSince(createdAt) >= 3 * 3600 else { return false }
     reminderAsked = true; return true

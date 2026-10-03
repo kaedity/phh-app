@@ -34,6 +34,13 @@
               guard jpegs.count==2, note.contains("スープは半分") else { throw FoodFailure.invalidValue }
             }
             var draft = try FoodDraft.fromAnalysisJSON(FoodPreviewData.analysis)
+            if note.contains("再解析前の確認画面") {
+              if ProcessInfo.processInfo.arguments.contains("--reanalysis-fail") { throw FoodFailure.invalidValue }
+              if ProcessInfo.processInfo.arguments.contains("--reanalysis-check") {
+                guard note.contains("\"answer\":\"半分\"") else { throw FoodFailure.invalidValue }
+                draft.items = try draft.items.map { try $0.scaled(0.5) }
+              }
+            }
             if ProcessInfo.processInfo.arguments.contains("--no-questions") { draft.questions = [] }
             return draft
           },
