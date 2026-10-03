@@ -190,13 +190,27 @@ public struct FoodItemSnapshot: Codable, Equatable, Identifiable, Sendable {
 }
 public struct FoodCatalog: Codable, Equatable, Sendable {
   public private(set) var versions: [FoodVersion], categories: [FoodCategory], presets: [FoodPreset]
+  public private(set) var entries: [FoodCatalogEntry]
   public init(
-    versions: [FoodVersion] = [], categories: [FoodCategory] = [], presets: [FoodPreset] = []
+    versions: [FoodVersion] = [], categories: [FoodCategory] = [], presets: [FoodPreset] = [], entries: [FoodCatalogEntry] = []
   ) throws {
     self.versions = versions
     self.categories = categories
     self.presets = presets
+    self.entries = entries
     try validate()
+  }
+  private enum CodingKeys: String, CodingKey { case versions, categories, presets, entries }
+  public init(from decoder: Decoder) throws {
+    let c=try decoder.container(keyedBy:CodingKeys.self)
+    try self.init(versions:c.decode([FoodVersion].self,forKey:.versions),categories:c.decode([FoodCategory].self,forKey:.categories),presets:c.decode([FoodPreset].self,forKey:.presets),entries:c.decodeIfPresent([FoodCatalogEntry].self,forKey:.entries) ?? [])
+  }
+  public mutating func save(_ entry: FoodCatalogEntry) throws {
+    if let old=entries.first(where:{$0.id==entry.id}) {
+      if old==entry {return}
+      guard old.targetID==entry.targetID && old.kind==entry.kind && entry.revision==old.revision+1 else {throw FoodFailure.revisionConflict}
+    } else { guard entry.revision==1 else {throw FoodFailure.revisionConflict} }
+    var copy=self;copy.entries.removeAll {$0.id==entry.id};copy.entries.append(entry);try copy.validate();self=copy
   }
   public func validate() throws {
     let versionIDs = Set(versions.map(\.id)), categoryIDs = Set(categories.map(\.id))
@@ -214,6 +228,11 @@ public struct FoodCatalog: Codable, Equatable, Sendable {
       guard p.categoryID.map({ categoryIDs.contains($0) }) ?? true,
         p.components.allSatisfy({ versionIDs.contains($0.versionID) })
       else { throw FoodFailure.missingReference }
+    }
+    guard Set(entries.map(\.id)).count==entries.count,Set(entries.map {$0.kind.rawValue+":"+$0.targetID}).count==entries.count else {throw FoodFailure.duplicateID}
+    for entry in entries {
+      try entry.validate()
+      guard entry.kind == .food ? versions.contains(where:{$0.foodID==entry.targetID}) : presets.contains(where:{$0.id==entry.targetID}) else {throw FoodFailure.missingReference}
     }
     guard Set(versions.map { "\($0.foodID)#\($0.revision)" }).count == versions.count else {
       throw FoodFailure.duplicateID
@@ -252,13 +271,13 @@ public struct FoodCatalog: Codable, Equatable, Sendable {
   }
   public func visiblePresets(query: String = "", categoryID: String? = nil, aliases: [String: [String]] = [:]) -> [FoodPreset] {
     presets.filter { p in
-      !p.archived && (categoryID == nil || p.categoryID == categoryID)
+      !p.archived && !isDeleted(p) && (categoryID == nil || p.categoryID == categoryID)
         && !(p.categoryID.flatMap { id in categories.first { $0.id == id } }?.archived ?? false)
         && JapaneseSearch.matches(p.name, query: query, aliases: aliases[p.id] ?? [])
     }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }
   public func snapshot(_ presetID: String) throws -> [FoodItemSnapshot] {
-    guard let p = presets.first(where: { $0.id == presetID && !$0.archived }) else {
+    guard let p = presets.first(where: { $0.id == presetID && !$0.archived && !isDeleted($0) }) else {
       throw FoodFailure.missingReference
     }
     return try p.components.map { c in

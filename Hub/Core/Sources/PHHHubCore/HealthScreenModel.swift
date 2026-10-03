@@ -74,7 +74,8 @@ extension HealthMetric {
         let windows = beds + sourceSamples.filter { sample in
             sample.sleepStage == .asleep && !beds.contains { $0.start <= sample.start && $0.end >= sample.end }
         }
-        return windows.filter { HealthDates.local($0.end) == date }.sorted { $0.end > $1.end }.first
+        // その日に終わった区間のうち最も長いものを主睡眠とする。昼寝が後に終わっても主睡眠を置き換えない（10/4）。
+        return windows.filter { HealthDates.local($0.end) == date }.max { ($0.end.timeIntervalSince($0.start), $0.end) < ($1.end.timeIntervalSince($1.start), $1.end) }
     }
     public var currentSleep: HealthSleepSession? {
         guard let window = currentSleepWindow else { return nil }

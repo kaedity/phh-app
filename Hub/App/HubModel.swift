@@ -64,7 +64,8 @@ import PHHHubCore
     func start() async {
         guard !previewOnly else { return }
         configureStore(); refreshCurrentDay(); healthRuntime?.startIfEnabled()
-        await google.restore(); if google.connected { await synchronize() }
+        // 前回オフラインでトークン更新に失敗した送信待ちを、自動の再接続ができた時点で戻す（10/4レビュー）。
+        await google.restore(); if google.connected { try? store?.resumeAuthentication(); await synchronize() }
         await catchUpHealth()
     }
     private func healthConfiguration() -> [String:Any] {
@@ -156,12 +157,18 @@ import PHHHubCore
         guard !busy else { return }; var meal = SyntheticMeal(date: date); meal.kcal = -1
         await queue(HubOperation(action: "confirm_meal", meal: meal))
     }
+    #endif
+    /// 要確認で止まった送信待ちを本番でも解消できるようにする。破棄しても確定記録は変わらない。
     func discardRejected(_ id: String) {
         guard !busy else { return }
-        do { try store?.discardRejected(id); try reload(); message = "要確認の試験操作を破棄しました。確定記録は保持しています。" }
+        do { try store?.discardRejected(id); try reload(); message = "この送信待ちを破棄しました。確定記録は保持しています。" }
         catch { message = error.localizedDescription }
     }
-    #endif
+    func retryRejected(_ id: String) async {
+        guard !busy else { return }
+        do { try store?.requeueRejected(id); try reload(); await synchronize(forceQueued: true) }
+        catch { message = error.localizedDescription }
+    }
     private func queue(_ operation: HubOperation) async {
         guard !busy, let store else { return }
         do { try store.enqueue(operation); try reload(); message = "端末に保存しました・同期待ち"; await synchronize() } catch { message = error.localizedDescription }
@@ -185,7 +192,7 @@ import PHHHubCore
         autoSleepDeliveries = try AutoSleepInbox(url:directory.appendingPathComponent("intake.json")).deliveries()
         try planningScreen?.refresh();try foodScreen?.refresh();try hydrationScreen?.refresh();let foodEnabled=try store.foodContract==1
         // 取得途中のCycle等が不正なら、画面の前回値をまとめて保持します。
-        rows=currentRows;pending=outbox;trainingSnapshot=snapshot;trainingCycles=cycles;trainingWriteEnabled=enabled;foodWriteEnabled=foodEnabled
+        rows=currentRows;pending=outbox;trainingSnapshot=snapshot;trainingCycles=snapshot.currentFirst(cycles);trainingWriteEnabled=enabled;foodWriteEnabled=foodEnabled
     }
     var meals: [LocalRow] { rows.filter { $0.table == "Meals" && $0.active } }
     var training: [LocalRow] { rows.filter { ["TrainingSets", "TrainingNotes"].contains($0.table) && $0.active } }

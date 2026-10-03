@@ -55,13 +55,15 @@ struct HubSettingsRow: View {
 
 struct HubHealthTiles: View {
   let model: HubModel, screen: HealthScreenModel
+  @Environment(\.dynamicTypeSize) private var textSize
   private var sleep: Double? {
     model.autoSleepDeliveries.filter { $0.targetDate == screen.date && $0.dictionary == .timeAsleep }.max { $0.receivedAt < $1.receivedAt }?.normalization.record?.actualSleepSeconds ?? screen.currentSleep?.seconds
   }
   private var sleepText: String { guard let sleep else { return "—" }; let minutes=Int(sleep/60); return "\(minutes/60)時間\(minutes%60)分" }
   var body: some View {
-    LazyVGrid(columns: [.init(.flexible()),.init(.flexible())], spacing: 10) {
-      NavigationLink { HealthWeightPage(screen:screen).toolbar(.visible, for:.navigationBar) } label: { tile("最新体重", value: foodNumber(screen.latestWeight?.value), unit:"kg", symbol:"scalemass.fill", color:pine) }.accessibilityIdentifier("health-weight-link")
+    // 最大級の文字では1列にして、「7時間32分」などが切れないようにする（10/4）。
+    LazyVGrid(columns: textSize.isAccessibilitySize ? [.init(.flexible())] : [.init(.flexible()),.init(.flexible())], spacing: 10) {
+      NavigationLink { HealthWeightPage(screen:screen).toolbar(.visible, for:.navigationBar) } label: { tile("最新体重", value: screen.latestWeight?.value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—", unit:"kg", symbol:"scalemass.fill", color:pine, note: weightNote, stale: weightStale) }.accessibilityIdentifier("health-weight-link")
       detailLink { tile("睡眠", value:sleepText, unit:"", symbol:"moon.fill", color:.gray) }
       detailLink { tile("歩数", value:foodNumber(screen.dailyStatistics[.stepCount]?.value), unit:"歩", symbol:"shoeprints.fill", color:pine) }
       detailLink { tile("活動", value:foodNumber(screen.dailyStatistics[.activeEnergyBurned]?.value), unit:"kcal", symbol:"flame.fill", color:.orange) }
@@ -70,10 +72,19 @@ struct HubHealthTiles: View {
   private func detailLink<Content: View>(@ViewBuilder content: () -> Content) -> some View {
     NavigationLink { HealthDetailPage(screen:screen, autoSleep:model.autoSleepDeliveries, readEnabled:model.healthReadEnabled, readPrepared:model.healthReadPrepared, connect:{await model.connectHealth()},refresh:{await model.catchUpHealth()}).toolbar(.visible,for:.navigationBar) } label: { content() }
   }
-  private func tile(_ title: String, value: String, unit: String, symbol: String, color: Color) -> some View {
+  // 体重は測った時刻を添える。今日の値でなければ薄く表示し、古い値を今日の値と誤認させない（DESIGN 2.3、10/4）。
+  private var weightStale: Bool { screen.latestWeight.map { HealthDates.local($0.start) != screen.date } ?? false }
+  private var weightNote: String? {
+    guard let sample = screen.latestWeight else { return nil }
+    let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.timeZone = HealthDates.calendar.timeZone
+    if !weightStale { f.dateFormat = "H:mm"; return (HealthDates.calendar.component(.hour, from: sample.start) < 12 ? "今朝 " : "今日 ") + f.string(from: sample.start) }
+    let days = HealthDates.calendar.dateComponents([.day], from: HealthDates.calendar.startOfDay(for: sample.start), to: FoodDates.date(screen.date)).day ?? 0
+    f.dateFormat = "M/d"; return "\(f.string(from: sample.start))（\(days)日前）"
+  }
+  private func tile(_ title: String, value: String, unit: String, symbol: String, color: Color, note: String? = nil, stale: Bool = false) -> some View {
     HStack(alignment:.top,spacing:8) {
         Image(systemName:symbol).foregroundStyle(color)
-        VStack(alignment:.leading,spacing:4) { Text(title).font(.caption).foregroundStyle(.secondary); MockFigure(value:value,unit:unit,size:21) }
+        VStack(alignment:.leading,spacing:4) { Text(title).font(.caption).foregroundStyle(.secondary); MockFigure(value:value,unit:unit,size:21).opacity(stale ? 0.55 : 1); Text(note ?? " ").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(note == nil) }
         Spacer(minLength:0); Image(systemName:"chevron.right").font(.caption2).foregroundStyle(.secondary)
       }.padding(12).frame(maxWidth:.infinity,alignment:.leading).background(.background,in:RoundedRectangle(cornerRadius:14))
   }
@@ -81,16 +92,22 @@ struct HubHealthTiles: View {
 
 
 struct HubMockTabBar: View {
+  static let reservedHeight: CGFloat = 54
   @Binding var selection: String
+  var onReselect: ((String) -> Void)? = nil
   private let tabs = [("home","ホーム","house"),("food","食事","fork.knife"),("other","その他","ellipsis")]
   var body: some View {
     VStack(spacing:0) {
       Rectangle().fill(pine.opacity(0.08)).frame(height:0.5)
       HStack(spacing:0) {
         ForEach(tabs, id: \.0) { key,title,symbol in
-          Button { Haptics.emit(.selection); selection=key } label: {
+          Button {
+            Haptics.emit(.selection)
+            if selection == key { onReselect?(key) } else { selection=key }
+          } label: {
             VStack(spacing:4) { Image(systemName:key == "home" && selection == key ? "house.fill" : symbol).font(.system(size:21)); Text(title).font(.system(size:10,weight:selection == key ? .semibold : .regular)) }
               .foregroundStyle(selection == key ? pine : Color.secondary).frame(maxWidth:.infinity,minHeight:48)
+              .contentShape(Rectangle())
           }.buttonStyle(.plain).accessibilityLabel(title).accessibilityIdentifier("hub-tab-"+key).accessibilityAddTraits(selection == key ? .isSelected : [])
         }
       }.padding(.horizontal,18).padding(.top,5)

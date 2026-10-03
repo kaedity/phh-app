@@ -16,7 +16,7 @@ function hubP5Model_(store,table,row) {
 }
 function hubP5StageApply_(stage,key,value,op,now,id,expected=0,source='conversation') {
   const [table,spec]=Object.entries(HUB_PLANNING_LAYOUT_).find(([,s])=>s.key===key);
-  const request={schema_version:1,environment:stage.config.environment,synthetic:true,approval_state:'confirmed',operation_id:op,action:Object.keys(hubP5Actions_(HUB_PLANNING_LAYOUT_)).find(a=>hubP5Actions_(HUB_PLANNING_LAYOUT_)[a].spec.key===key),entity_id:id,expected_revision:expected,payload:{[key]:value}};
+  const request={schema_version:1,environment:stage.config.environment,synthetic:stage.config.real_data_enabled!==true,approval_state:'confirmed',operation_id:op,action:Object.keys(hubP5Actions_(HUB_PLANNING_LAYOUT_)).find(a=>hubP5Actions_(HUB_PLANNING_LAYOUT_)[a].spec.key===key),entity_id:id,expected_revision:expected,payload:{[key]:value}};
   const receipt=hubP5Apply_(stage,request,now);intakeCheck_(receipt.status==='committed','INVALID_VALUE',receipt.error_code);
   for(const [k,r]of stage.pending)if(r.last_operation_id===op && 'source_kind' in r)stage.put(k.split('\0')[0],{...r,source_kind:source});
   const saved=stage.get('Operations',op);stage.put('Operations',{...saved,actor:source});return {table,row:stage.get(table,id)};

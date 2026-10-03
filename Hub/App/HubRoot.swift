@@ -8,7 +8,16 @@ let canvas = Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .da
 struct HubRoot: View {
     let model: HubModel
     @Environment(\.scenePhase) private var phase
-    @State private var selectedTab = "home"
+    @State private var selectedTab = HubRoot.initialTab
+    @State private var otherNavigationID = 0
+    // 確認用：合成表示で `--tab food` / `--tab other` を付けると、そのタブから始める。
+    private static var initialTab: String {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "--tab"), i + 1 < args.count, ["home","food","other"].contains(args[i+1]) { return args[i+1] }
+        #endif
+        return "home"
+    }
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack { HomePage(model: model) }.toolbar(.hidden,for:.tabBar).tabItem { Label("ホーム", systemImage: "house.fill") }.tag("home")
@@ -16,11 +25,17 @@ struct HubRoot: View {
                 if model.foodWriteEnabled,let food=model.foodScreen { FoodHubPage(model:food,date:FoodDates.date(model.date),analyze:model.realFoodEnabled ? {try await model.chatGPT.analyzeFood(jpegs:$0,note:$1)}:nil,preview:false,planning:model.planningScreen,syncing:model.busy,implicitDate:!model.previewOnly,hydration:model.hydrationScreen,plateAnalyze:model.realFoodEnabled ? {try await model.chatGPT.analyzeSharedPlate(before:$0,after:$1,note:$2)}:nil) }
                 else { FoodPage(model:model) }
             }.toolbar(.hidden,for:.tabBar).tabItem { Label("食事", systemImage: "fork.knife") }.tag("food")
-            NavigationStack { OtherPage(model: model) }.toolbar(.hidden,for:.tabBar).tabItem { Label("その他", systemImage: "ellipsis") }.tag("other")
+            NavigationStack { OtherPage(model: model) }.id(otherNavigationID).toolbar(.hidden,for:.tabBar).tabItem { Label("その他", systemImage: "ellipsis") }.tag("other")
         }
+        // 内側のNavigationStackの戻すバーも、外側の固定タブを避けます。
+        .environment(\.foodUndoBottomInset, HubMockTabBar.reservedHeight + 8)
         .tint(pine)
         .toolbar(.hidden, for: .tabBar)
-        .safeAreaInset(edge: .bottom, spacing: 0) { HubMockTabBar(selection: $selectedTab) }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HubMockTabBar(selection: $selectedTab, onReselect: { key in
+                if key == "other" { otherNavigationID += 1 }
+            })
+        }
         .task { await model.start() }
         .onChange(of: phase) { _, value in
             if value == .active { Task { await model.catchUpHealth(); if model.google.connected { await model.synchronize() } } }
@@ -33,7 +48,8 @@ struct Page<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         ScrollView { VStack(alignment: .leading, spacing: 18) { content }.padding(20).padding(.bottom, 16) }
-            .background(canvas).navigationTitle(title).navigationBarTitleDisplayMode(.large)
+            // モック準拠：大きいタイトルを使わず、上部中央の小さいタイトルにそろえる（DESIGN 2.6）。
+            .background(canvas).navigationTitle(title).navigationBarTitleDisplayMode(.inline)
     }
 }
 struct Card<Content: View>: View {
@@ -150,13 +166,7 @@ private struct HomePage: View {
         guard let cycle=model.trainingCycles.first else { return "トレーニング" }
         return "\(cycle.name) · \(cycle.completedSlots(in:model.trainingSnapshot).count) / \(cycle.slots.count)"
     }
-    private var elapsedTraining: String {
-        TrainingKind.allCases.map { kind in
-            guard let session=model.trainingSnapshot.lastSession(of:kind,onOrBefore:model.date), let text=session.endedAt ?? session.startedAt,
-                  let time=ISO8601DateFormatter().date(from:text) else { return "\(kind.rawValue) —" }
-            return "\(kind.rawValue) \(max(0,Int(Date().timeIntervalSince(time)/3600)))時間"
-        }.joined(separator:" · ")
-    }
+    private var elapsedTraining: String { TrainingElapsed.summary(model.trainingSnapshot, today: model.date, now: Date()) }
 }
 private struct Macro: View {
     let title: String; let symbol: String; let value: Double?
@@ -203,30 +213,50 @@ private struct OtherPage: View {
     var body: some View {
         HubMockPage {
             SyncCard(model:model,compact:true)
-            if let planning=model.planningScreen {
-                NavigationLink { GoalDetailPage(model:planning,date:model.date,consumed:planningConsumed(summary:model.summary)).toolbar(.visible,for:.navigationBar) } label: { HubMockCard { HubSettingsRow(title:"目標",subtitle:"カロリー・PFCの目標設定",symbol:"scope") } }
+            otherSection("設定") {
+                if let planning=model.planningScreen {
+                    NavigationLink { GoalDetailPage(model:planning,date:model.date,consumed:planningConsumed(summary:model.summary)).toolbar(.visible,for:.navigationBar) } label: { otherRow("目標","カロリー・PFCの目標設定","scope") }
+                }
+                if let food=model.foodScreen {
+                    NavigationLink { FoodCatalogPage(model:food).toolbar(.visible,for:.navigationBar) } label: { otherRow("カテゴリー","食事の分類・プリセット・読みの設定","square.grid.2x2") }
+                }
+                NavigationLink { RecordingPreferencesPage().toolbar(.visible,for:.navigationBar) } label: { otherRow("食事の記録設定","日付の区切り・前回値・確認の基準","clock") }
+                NavigationLink { Page(title:"連携") { connections }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { otherRow("連携","ヘルスケア・外部アプリ","link") }
+                NavigationLink { Page(title:"同期") { SyncCard(model:model); syncDetails }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { otherRow("同期","送信待ち・再接続・同期の設定","arrow.triangle.2.circlepath",last:true) }
             }
-            if let hub=model.store,let planning=model.planningScreen,let health=model.healthScreen {
-                NavigationLink {EnergyReviewPage(hub:hub,planning:planning,health:health,date:model.date)} label: {HubMockCard{HubSettingsRow(title:"カロリーの見直し",subtitle:"体重と摂取量から週1回確認",symbol:"chart.line.uptrend.xyaxis")}}.accessibilityIdentifier("energy-review-link")
+            otherSection("見直し") {
+                if let hub=model.store,let planning=model.planningScreen,let health=model.healthScreen {
+                    NavigationLink {EnergyReviewPage(hub:hub,planning:planning,health:health,date:model.date)} label: {otherRow("カロリーの見直し","体重と摂取量から週1回確認","chart.line.uptrend.xyaxis")}.accessibilityIdentifier("energy-review-link")
+                }
+                if let hub=model.store,let planning=model.planningScreen {
+                    NavigationLink {WeeklyAllocationPage(hub:hub,planning:planning,date:model.date,preview:model.previewOnly)} label: {otherRow("週内の配分","食べ過ぎた分を残りの日で調整（試算）","calendar.badge.clock")}.accessibilityIdentifier("weekly-allocation-link")
+                }
+                if let hub=model.store {NavigationLink {TrainingInsightsPage(hub:hub,date:model.date)} label: {otherRow("トレーニングの見直し","停滞と負荷を落とす週の目安","figure.strengthtraining.traditional")}}
+                if let hub=model.store {NavigationLink {SleepTrainingInsightsPage(hub:hub,date:model.date,autoSleep:model.autoSleepDeliveries)} label: {otherRow("睡眠と成績","前夜の睡眠とその日の成績を比べる","moon.zzz")}.accessibilityIdentifier("sleep-training-link")}
+                NavigationLink {MuscleRecoveryPage(snapshot:model.trainingSnapshot,asOf:Date())} label: {otherRow("部位と前回の実施","部位の対応を編集・経過時間を確認","figure.cooldown",last:true)}.accessibilityIdentifier("muscle-recovery-link")
             }
-            if let hub=model.store,let planning=model.planningScreen {
-                NavigationLink {WeeklyAllocationPage(hub:hub,planning:planning,date:model.date,preview:model.previewOnly)} label: {HubMockCard{HubSettingsRow(title:"週内の配分",subtitle:"完了日の差分から調整を試算",symbol:"calendar.badge.clock")}}.accessibilityIdentifier("weekly-allocation-link")
-            }
-            if let food=model.foodScreen {
-                NavigationLink { FoodCatalogPage(model:food).toolbar(.visible,for:.navigationBar) } label: { HubMockCard { HubSettingsRow(title:"カテゴリー",subtitle:"食事の分類・プリセット・読みの設定",symbol:"square.grid.2x2") } }
-            }
-            if let hub=model.store {NavigationLink {TrainingInsightsPage(hub:hub,date:model.date)} label: {HubMockCard{HubSettingsRow(title:"トレーニングの見直し",subtitle:"停滞と負荷を落とす週の目安",symbol:"figure.strengthtraining.traditional")}}}
-            if let hub=model.store {NavigationLink {SleepTrainingInsightsPage(hub:hub,date:model.date,autoSleep:model.autoSleepDeliveries)} label: {HubMockCard{HubSettingsRow(title:"睡眠と成績",subtitle:"睡眠区間と主系列の実績を比較",symbol:"moon.zzz")}}.accessibilityIdentifier("sleep-training-link")}
-            NavigationLink {MuscleRecoveryPage(snapshot:model.trainingSnapshot,asOf:Date())} label: {HubMockCard{HubSettingsRow(title:"部位と前回の実施",subtitle:"部位の対応を編集・経過時間を確認",symbol:"figure.cooldown")}}.accessibilityIdentifier("muscle-recovery-link")
-            NavigationLink { Page(title:"連携") { connections }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { HubMockCard { HubSettingsRow(title:"連携",subtitle:"ヘルスケア・外部アプリ",symbol:"link") } }
-            NavigationLink { Page(title:"同期") { SyncCard(model:model); syncDetails }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { HubMockCard { HubSettingsRow(title:"同期",subtitle:"送信待ち・再接続・同期の設定",symbol:"arrow.triangle.2.circlepath") } }
             DisclosureGroup("記録と成績") {
-                NavigationLink { RecordingPreferencesPage().toolbar(.visible,for:.navigationBar) } label: { Label("食事の記録設定",systemImage:"clock") }
-            if let health=model.healthScreen { Card { NavigationLink { HealthDetailPage(screen:health,autoSleep:model.autoSleepDeliveries,readEnabled:model.healthReadEnabled,readPrepared:model.healthReadPrepared,connect:{await model.connectHealth()},refresh:{await model.catchUpHealth()}) } label: { Label("健康データと体重",systemImage:"heart.text.clipboard") } } }
-            Card { NavigationLink { TrainingCalendarPage(snapshot:model.trainingSnapshot,status:model.message,reference:model.trainingCycles.first,date:FoodDates.date(model.date),cycles:model.trainingCycles,saveReference:model.trainingWriteEnabled ? { await model.registerTrainingCycle($0) }:nil,updateSession:model.trainingWriteEnabled ? { await model.updateTrainingSession($0,state:$1,cycle:$2,slot:$3) }:nil).toolbar(.visible,for:.navigationBar) } label: { Label("トレーニング",systemImage:"calendar") };NavigationLink { TrainingGradesPage(snapshot:model.trainingSnapshot,date:FoodDates.date(model.date)).toolbar(.visible,for:.navigationBar) } label: { Label("種目の成績",systemImage:"chart.xyaxis.line") } }
-            }.font(.subheadline)
+                VStack(spacing:0) {
+                    if let health=model.healthScreen { NavigationLink { HealthDetailPage(screen:health,autoSleep:model.autoSleepDeliveries,readEnabled:model.healthReadEnabled,readPrepared:model.healthReadPrepared,connect:{await model.connectHealth()},refresh:{await model.catchUpHealth()}) } label: { otherRow("健康データと体重","体重・睡眠・歩数・活動の記録","heart.text.clipboard") } }
+                    NavigationLink { TrainingCalendarPage(snapshot:model.trainingSnapshot,status:model.message,reference:model.trainingCycles.first,date:FoodDates.date(model.date),cycles:model.trainingCycles,saveReference:model.trainingWriteEnabled ? { await model.registerTrainingCycle($0) }:nil,updateSession:model.trainingWriteEnabled ? { await model.updateTrainingSession($0,state:$1,cycle:$2,slot:$3) }:nil).toolbar(.visible,for:.navigationBar) } label: { otherRow("トレーニング","カレンダーとCycle","calendar") }
+                    NavigationLink { TrainingGradesPage(snapshot:model.trainingSnapshot,date:FoodDates.date(model.date)).toolbar(.visible,for:.navigationBar) } label: { otherRow("種目の成績","推定1RM・自己ベスト","chart.xyaxis.line",last:true) }
+                }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16)).padding(.top,8)
+            }.font(.subheadline.bold()).tint(pine)
             HStack { Link("アプリについて",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info")!); Spacer(); Link("プライバシー",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info/privacy")!); Link("利用条件",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info/terms")!) }.font(.caption2).foregroundStyle(.secondary).padding(.top,8)
         }.buttonStyle(.plain)
+    }
+    // モックの「その他」：同じ種類の行を1枚にまとめ、見出しで分ける。
+    private func otherSection<C: View>(_ title: String, @ViewBuilder _ rows: () -> C) -> some View {
+        VStack(alignment:.leading,spacing:8) {
+            Text(title).font(.footnote.bold()).foregroundStyle(.secondary).padding(.leading,4)
+            VStack(spacing:0) { rows() }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        }
+    }
+    private func otherRow(_ title: String, _ subtitle: String, _ symbol: String, last: Bool = false) -> some View {
+        VStack(spacing:0) {
+            HubSettingsRow(title:title,subtitle:subtitle,symbol:symbol).padding(.horizontal,16).padding(.vertical,10)
+            if !last { Divider().padding(.leading,56) }
+        }
     }
     @ViewBuilder private var connections: some View {
             Card {
@@ -263,11 +293,14 @@ private struct OtherPage: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.operation.payload?.name ?? (item.operation.requiresHealthContract ? "健康データの写し" : item.operation.requiresPlanningContract ? "目標・サプリの変更" : "食事の取消")).font(.subheadline.bold())
                             Text(item.message).font(.subheadline).foregroundStyle(.secondary)
-                            #if DEBUG
                             if [.conflict, .invalid].contains(item.state) {
-                                Button("この要確認の試験操作を破棄", role: .destructive) { model.discardRejected(item.id) }.disabled(model.busy)
+                                // 要確認が先頭にあると後ろの送信も止まるため、本番でも「もう一度送る」「破棄」を選べるようにする。
+                                HStack {
+                                    Button("もう一度送る") { Task { await model.retryRejected(item.id) } }.buttonStyle(.bordered)
+                                    Button("破棄", role: .destructive) { model.discardRejected(item.id) }.buttonStyle(.bordered)
+                                }.disabled(model.busy).font(.subheadline)
+                                Text("破棄しても、確定した記録は変わりません。必要なら記録し直してください。").font(.caption).foregroundStyle(.secondary)
                             }
-                            #endif
                         }
                     }
                 }

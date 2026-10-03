@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "tables": {
+    "CatalogEntries": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "target_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "target_id",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    }
+  }
+}

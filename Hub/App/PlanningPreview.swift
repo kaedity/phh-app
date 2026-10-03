@@ -38,7 +38,7 @@ struct PlanningPreviewRoot: View {
           revision: r.revision, indexed_revision: r.revision, removed: false,
           local_date: r.values["local_date"]?.text), record: r.values)
       }, next_cursor: rows.count, has_more: false)
-    page.planning_contract = 1; try! hub.apply(page)
+    page.planning_contract = 1; page.catalog_entry_contract = 1; try! hub.apply(page)
     return hub
   }
   var body: some View {

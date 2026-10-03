@@ -76,7 +76,7 @@ struct SleepTrainingInsightsPage: View {
 
     @ViewBuilder private func comparisonCard(_ comparison: SleepTrainingComparison) -> some View {
         HubMockCard {
-            Text("\(comparison.date) · \(comparison.exercise.rawValue)").font(.headline)
+            Text("\(mockDay(comparison.date)) · \(comparison.exercise.rawValue)").font(.headline)
             Text(seriesLabel(comparison.seriesID)).font(.caption).foregroundStyle(.secondary)
             let options = choices.filter { $0.wakeDate == comparison.date && $0.sourceID == selectedSource }
             if !options.isEmpty {
@@ -126,10 +126,7 @@ struct SleepTrainingInsightsPage: View {
     private func windowSelection(_ day: String, options: [SleepTrainingChoice]) -> Binding<String> {
         .init(get: { selectedChoice(day, options: options)?.id ?? "" }, set: { id in selectedWindows[day] = id; reload() })
     }
-    private func seriesLabel(_ id: String) -> String {
-        let parts = id.split(separator: "／").map(String.init)
-        return parts.count == 4 ? [parts[3], parts[2], parts[1]].joined(separator: "・") : id
-    }
+    private func seriesLabel(_ id: String) -> String { trainingSeriesLabel(id) }
     private func clock(_ value: Date) -> String {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "ja_JP"); formatter.timeZone = HealthDates.calendar.timeZone
         formatter.dateFormat = "M/d H:mm"; return formatter.string(from: value)

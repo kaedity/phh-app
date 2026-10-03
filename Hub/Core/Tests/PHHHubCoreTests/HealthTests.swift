@@ -64,9 +64,15 @@ import Testing
     let c = try HealthSample(id: UUID().uuidString, metric: .bodyMass, source: other, start: time, end: time, value: 90, unit: "kg")
     let all = [a,b,c,try sample(nil)]
     let days = HealthPresentation.weightDays(all, sourceID: source.id)
-    #expect(days.count == 1); #expect(days[0].representativeID == b.id); #expect(days[0].value == 61)
+    #expect(days.count == 1); #expect(days[0].representativeID == a.id); #expect(days[0].value == 60)
     #expect(days[0].minimum == 60); #expect(days[0].maximum == 61); #expect(days[0].measurementCount == 3); #expect(days[0].unknownCount == 1); #expect(all.count == 4)
     #expect(HealthPresentation.weightDays(all, sourceID: "missing").isEmpty)
+  }
+  @Test func weightRepresentativeIsTheFirstMorningMeasurementNotTheEvening() throws {
+    // time は 10/3 0:00 JST。2:00の夜ふかし計測・7:00の朝・22:00の入浴後。
+    let late = try sample(71.0, at: time.addingTimeInterval(2*3600)), morning = try sample(70.2, at: time.addingTimeInterval(7*3600)), evening = try sample(71.4, at: time.addingTimeInterval(22*3600))
+    let day = HealthPresentation.weightDays([evening, late, morning], sourceID: source.id)[0]
+    #expect(day.representativeID == morning.id); #expect(day.value == 70.2); #expect(day.minimum == 70.2); #expect(day.maximum == 71.4)
   }
   @Test func sleepUnionUsesOneSourceWakeDateAndExplicitSessionNotInventedStageTotals() throws {
     let start = Date(timeIntervalSince1970: 1790951400), end = start.addingTimeInterval(8*3600)
@@ -83,5 +89,18 @@ import Testing
     let stats = try HealthDailyStatistics(metric: .stepCount, date: HealthDates.local(time), value: 100, measuredAt: time)
     #expect(stats.value == 100); #expect(stats.method == "healthkit-statistics-v1")
     #expect(try HealthDailyStatistics(metric: .stepCount, date: stats.date, value: nil, measuredAt: time).value == nil)
+  }
+}
+
+struct HealthWeightTrendTests {
+  func day(_ date: String, _ v: Double) -> HealthWeightDay { HealthWeightDay(date: date, sourceID: "s", representativeID: date, value: v, minimum: v, maximum: v, measurementCount: 1, unknownCount: 0) }
+  @Test func weeklyTrendNeedsFiveDaysAndComparesWithThePreviousWeek() throws {
+    let last = (0..<7).map { day(String(format: "2026-10-%02d", 4 + $0), 65.5 + 0.05 * Double($0)) }
+    let prev = ["2026-09-28","2026-09-29","2026-09-30","2026-10-01","2026-10-02"].map { day($0, 65.2) }
+    let t = try #require(HealthPresentation.weightTrend(prev + last, end: "2026-10-10"))
+    #expect(abs(t.average - 65.65) < 1e-9); #expect(abs((t.change ?? 0) - 0.45) < 1e-9); #expect(t.measuredDays == 7)
+    #expect(HealthPresentation.weightTrend(Array(last.prefix(4)), end: "2026-10-07") == nil)
+    #expect(HealthPresentation.weightTrend(last, end: "2026-10-10")?.change == nil)
+    #expect(HealthPresentation.weightAverages(prev + last).first?.date == "2026-10-02")
   }
 }

@@ -2,10 +2,11 @@
 // Googleの採取/保存/削除や本番の接続切替はこのファイルから行わない。
 const HUB_BACKUP_P5_TABLES_ = HUB_SCHEMA_.tables.GoalRules ? ['GoalRules','DailyGoals','DailyGoalAdjustments','FoodDays','SupplementProducts','SupplementProductNutrients','SupplementPlans','SupplementDays','SupplementDayNutrients'] : [];
 const HUB_BACKUP_HEALTH_TABLES_ = HUB_SCHEMA_.tables.HealthBatches?['HealthBatches','HealthArchives','HealthDaily']:[];
-const HUB_BACKUP_TABLES_ = ['Meals','MealItems','IntakeNutrients','TrainingSessions','TrainingSets','TrainingNotes',...(HUB_SCHEMA_.tables.TrainingCycles?['TrainingCycles','TrainingPlanSlots']:[]),...(HUB_SCHEMA_.tables.FoodVersions?['FoodVersions','FoodNutrients','Categories','Presets','PresetItems']:[]),...HUB_BACKUP_P5_TABLES_,...HUB_BACKUP_HEALTH_TABLES_,...(HUB_SCHEMA_.tables.WaterIntakes?['WaterIntakes']:[])];
+const HUB_BACKUP_TABLES_ = ['Meals','MealItems','IntakeNutrients','TrainingSessions','TrainingSets','TrainingNotes',...(HUB_SCHEMA_.tables.TrainingCycles?['TrainingCycles','TrainingPlanSlots']:[]),...(HUB_SCHEMA_.tables.FoodVersions?['FoodVersions','FoodNutrients','Categories','Presets','PresetItems']:[]),...HUB_BACKUP_P5_TABLES_,...HUB_BACKUP_HEALTH_TABLES_,...(HUB_SCHEMA_.tables.WaterIntakes?['WaterIntakes']:[]),...(HUB_SCHEMA_.tables.CatalogEntries?['CatalogEntries']:[])];
 function hubBackupReader_(tables,environment) {
   const maps={};for(const name of Object.keys(HUB_SCHEMA_.tables))maps[name]=new Map(tables[name].map((r,i)=>[r.id,{row:r,position:i+2}]));
-  return {config:{environment,real_data_enabled:false},prefetch:()=>{},get:(t,id)=>maps[t]?.get(id)?.row || null,find:(t,k,v)=>tables[t].filter(r=>r[k]===v),position:(t,id)=>maps[t]?.get(id)?.position};
+  const real=(tables.Settings || []).find(r=>r.id==='real_data_enabled')?.bool_value===true;
+  return {config:{environment,real_data_enabled:real},prefetch:()=>{},get:(t,id)=>maps[t]?.get(id)?.row || null,find:(t,k,v)=>tables[t].filter(r=>r[k]===v),position:(t,id)=>maps[t]?.get(id)?.position};
 }
 function hubBackupValidate_(tables,meta) {
   ensure_(meta.schema_version===1 && ['PHH_TEST','PHH_PRODUCTION'].includes(meta.environment),'BACKUP_ENVIRONMENT');
@@ -16,7 +17,7 @@ function hubBackupValidate_(tables,meta) {
     for(const r of tables[name]) {ensure_(r && stable_(Object.keys(r).sort())===stable_(keys) && typeof r.id==='string' && r.id.length>0 && !ids.has(r.id),'BACKUP_DUPLICATE_OR_FIELDS');hubRow_(name,r);ids.add(r.id);}
   }
   const store=hubBackupReader_(tables,meta.environment);hubEnvironment_(store);
-  ensure_(hubSetting_(store,'real_data_enabled',true)===false,'BACKUP_REAL_DATA_DISABLED');
+  ensure_(typeof hubSetting_(store,'real_data_enabled',null)==='boolean','BACKUP_SETTINGS_MISMATCH');
   ensure_(hubSetting_(store,'generation')===meta.generation && hubSetting_(store,'next_change')===meta.snapshot_revision,'BACKUP_SETTINGS_MISMATCH');
   const indexed=new Set();
   for(const idx of tables.RecordIndex) {
@@ -39,10 +40,11 @@ function hubBackupValidate_(tables,meta) {
     for(const slot of tables.TrainingPlanSlots)ensure_(store.get('TrainingCycles',slot.cycle_id),'BACKUP_ORPHAN');
   }
   if(HUB_SCHEMA_.tables.FoodVersions)hubP4ValidateCatalogRows_(store,tables);
+  if(HUB_SCHEMA_.tables.CatalogEntries)hubCatalogEntriesBackupValidate_(store,tables.CatalogEntries);
   if(HUB_SCHEMA_.tables.GoalRules)hubP5ReadPlan_(HUB_BACKUP_P5_TABLES_.flatMap(table=>tables[table].map(row=>({table,row}))),HUB_PLANNING_LAYOUT_);
   if(HUB_SCHEMA_.tables.HealthBatches)hubHealthBackupValidate_(tables,meta);
   for(const r of tables.Meals) {if(HUB_SCHEMA_.tables.FoodVersions && r.food_name!=null) {const state=hubEmptyState_();hubLoadDate_(store,r.local_date,state);const meal=hubP4Snapshot_(state.records[r.id]);for(const item of meal.items)ensure_(!item.versionID || store.get('FoodVersions',item.versionID),'BACKUP_FOOD_REFERENCE');if(meal.presetID)ensure_(store.get('Presets',meal.presetID)?.revision>=meal.presetRevision,'BACKUP_FOOD_REFERENCE');continue;}const items=store.find('MealItems','meal_id',r.id);ensure_(items.length===1,'BACKUP_MEAL_ITEMS');const ns=store.find('IntakeNutrients','item_id',items[0].id);ensure_(ns.length===4 && new Set(ns.map(n=>n.nutrient_id)).size===4,'BACKUP_NUTRIENTS');}
-  for(const r of tables.OperationEntities) {ensure_(store.get('Operations',r.operation_id)?.status==='committed' && ['Meals','TrainingSets','TrainingNotes',...(HUB_SCHEMA_.tables.TrainingCycles?['TrainingCycles','TrainingSessions']:[]),...(HUB_SCHEMA_.tables.FoodVersions?['FoodVersions','Categories','Presets']:[]),...(HUB_SCHEMA_.tables.GoalRules?['GoalRules','DailyGoals','FoodDays','SupplementProducts','SupplementPlans','SupplementDays']:[]),...(HUB_SCHEMA_.tables.HealthBatches?['HealthBatches']:[]),...(HUB_SCHEMA_.tables.WaterIntakes?['WaterIntakes']:[])].includes(r.table_name) && store.get(r.table_name,r.entity_id)?.revision>=r.revision,'BACKUP_OPERATION_REFERENCE');}
+  for(const r of tables.OperationEntities) {ensure_(store.get('Operations',r.operation_id)?.status==='committed' && ['Meals','TrainingSets','TrainingNotes',...(HUB_SCHEMA_.tables.TrainingCycles?['TrainingCycles','TrainingSessions']:[]),...(HUB_SCHEMA_.tables.FoodVersions?['FoodVersions','Categories','Presets']:[]),...(HUB_SCHEMA_.tables.GoalRules?['GoalRules','DailyGoals','FoodDays','SupplementProducts','SupplementPlans','SupplementDays']:[]),...(HUB_SCHEMA_.tables.HealthBatches?['HealthBatches']:[]),...(HUB_SCHEMA_.tables.WaterIntakes?['WaterIntakes']:[]),...(HUB_SCHEMA_.tables.CatalogEntries?['CatalogEntries']:[])].includes(r.table_name) && store.get(r.table_name,r.entity_id)?.revision>=r.revision,'BACKUP_OPERATION_REFERENCE');}
   const changes=tables.SyncChanges.slice().sort((a,b)=>a.change_number-b.change_number);
   ensure_(changes.length===meta.snapshot_revision,'BACKUP_CHANGE_GAP');
   changes.forEach((c,i)=>{const r=store.get(c.table_name,c.entity_id);ensure_(c.id===String(i+1) && c.change_number===i+1 && [...HUB_BACKUP_TABLES_,'DailySummary'].includes(c.table_name) && r && c.revision>0 && c.revision<=r.revision,'BACKUP_CHANGE_GAP');});
@@ -63,9 +65,10 @@ function hubBackupCreate_(tables,meta,maximumBytes=500000) {
   const manifest={format:'PHH_BACKUP_1',schema_version:1,environment:meta.environment,generation:meta.start_generation,snapshot_revision:meta.start_revision,created_at:new Date(meta.now).toISOString(),complete:true,tables:[]},objects={};
   hubBackupValidate_(tables,manifest);
   for(const [name,rows] of Object.entries(tables)) {
-    const parts=[];let text='',count=0;
-    const flush=()=>{if(!count)return;const sha256=hubHash_(text),bytes=Utilities.newBlob(text).getBytes().length;objects[sha256]=text;parts.push({sha256,bytes,count});text='';count=0;};
-    for(const row of rows) {const line=stable_(row)+'\n';ensure_(Utilities.newBlob(line).getBytes().length<=maximumBytes,'BACKUP_ROW_TOO_LARGE');if(count && Utilities.newBlob(text+line).getBytes().length>maximumBytes)flush();text+=line;count++;}
+    // 行ごとのバイト数を足し上げる（累積文字列を毎回バイト化しない。10/4：行数の2乗で遅くなっていた）。
+    const parts=[];let text='',count=0,size=0;
+    const flush=()=>{if(!count)return;const sha256=hubHash_(text);objects[sha256]=text;parts.push({sha256,bytes:size,count});text='';count=0;size=0;};
+    for(const row of rows) {const line=stable_(row)+'\n',lineBytes=Utilities.newBlob(line).getBytes().length;ensure_(lineBytes<=maximumBytes,'BACKUP_ROW_TOO_LARGE');if(count && size+lineBytes>maximumBytes)flush();text+=line;size+=lineBytes;count++;}
     flush();manifest.tables.push({name,count:rows.length,parts});
   }
   manifest.sha256=hubHash_(manifest);manifest.id=hubId_(manifest.sha256);return {manifest,objects};
@@ -89,6 +92,7 @@ function hubBackupUpgradeTables_(tables) {
   const names=s=>Object.keys(s.tables).sort(),same=(a,b)=>stable_(a)===stable_(b);
   if(same(Object.keys(tables).sort(),names(HUB_SCHEMA_)))return tables;
   const schemas={},current=hubClone_(HUB_SCHEMA_);schemas[Object.keys(current.tables).length]=hubClone_(current);
+  if(current.tables.CatalogEntries){delete current.tables.CatalogEntries;schemas[37]=hubClone_(current);}
   if(current.tables.WaterIntakes){delete current.tables.WaterIntakes;schemas[36]=hubClone_(current);}
   if(current.tables.HealthBatches){for(const name of ['HealthBatches','HealthArchives','HealthDaily','HealthPreparations'])delete current.tables[name];schemas[32]=hubClone_(current);}
   if(current.tables.GoalRules) {for(const name of HUB_BACKUP_P5_TABLES_)delete current.tables[name];schemas[23]=hubClone_(current);}
@@ -113,7 +117,7 @@ function hubBackupUpgradeTables_(tables) {
   }
   const target=Object.keys(HUB_SCHEMA_.tables).length;
   while(count<target) {
-    const plan=count===16?hubP3MigrationPlan_(schema,out):count===18?hubP4MigrationPlan_(schema,out):count===23?hubP5MigrationPlan_(schema,out,HUB_PLANNING_LAYOUT_):count===32?hubHealthP6MigrationPlan_(schema,out):count===36 && HUB_SCHEMA_.tables.WaterIntakes?{target_tables:37,schema:HUB_SCHEMA_,books:{...out,WaterIntakes:[]}}:null;
+    const plan=count===16?hubP3MigrationPlan_(schema,out):count===18?hubP4MigrationPlan_(schema,out):count===23?hubP5MigrationPlan_(schema,out,HUB_PLANNING_LAYOUT_):count===32?hubHealthP6MigrationPlan_(schema,out):count===36 && HUB_SCHEMA_.tables.WaterIntakes?{target_tables:37,schema:schemas[37],books:{...out,WaterIntakes:[]}}:count===37 && HUB_SCHEMA_.tables.CatalogEntries?{target_tables:38,schema:HUB_SCHEMA_,books:{...out,CatalogEntries:[]}}:null;
     ensure_(plan && plan.target_tables>count,'BACKUP_TABLE_SET');out=plan.books;schema=plan.schema;count=plan.target_tables;
   }
   ensure_(count===target && same(names(schema),names(HUB_SCHEMA_)),'BACKUP_TABLE_SET');return out;

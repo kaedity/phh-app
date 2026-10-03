@@ -22,6 +22,7 @@ const INTAKE_REASONS_ = {
   ID_REUSED:'同じ受付番号で内容が違う行がある', ROW_EDITED:'受付済みの行が書き換えられた（書き換え後の内容は保存していない）',
   UNDO_INVALID:'戻せる受付ではない', UNDO_NOT_LATEST:'戻す対象の後に別の変更がある',
   RECENT_APP_EDIT:'アプリで直前に変更された記録（どちらを残すか確認）',
+  INTERNAL:'この行だけ処理できなかった（理由のコードを確認。ほかの行の保存は続けています）',
 };
 
 function intakeEmpty_() { return {seq:0, records:{}, ledger:{}, reviews:[]}; }
@@ -34,6 +35,11 @@ function intakeCell_(v) {
   if (Object.prototype.toString.call(v) === '[object Date]') return intakeJstDate_(v.getTime());
   return String(v).normalize('NFKC').trim();
 }
+// 日付の書き方の揺れ（2026/10/05・2026-10-5・2026.10.05）を YYYY-MM-DD へそろえる。それ以外はそのまま返して検査で落とす。
+function intakeNormalizeDate_(v) {
+  const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(v || '');
+  return m ? m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') : v;
+}
 function intakeJstDate_(ms) { return new Date(ms + 9 * 3600000).toISOString().slice(0, 10); }
 function intakeJstTime_(ms) { return new Date(ms + 9 * 3600000).toISOString().slice(0, 16).replace('T', ' '); }
 
@@ -41,7 +47,8 @@ const INTAKE_KEY_ALIASES_ = {rpe:'RPE', rir:'RIR', p:'P', f:'F', c:'C', kcal:'kc
 function intakeContent_(text) {
   const out = {};
   if (!text) return out;
-  for (const part of text.split(/[;\n]/)) {
+  // 区切りは ; と改行。「、」「,」は次に「項目=」が続くときだけ区切りとして扱う（1,050 のような数値は分けない）。
+  for (const part of text.split(/[;\n]|[、,](?=\s*[^=;、,\s][^=;、,]*=)/)) {
     const item = part.trim();
     if (!item) continue;
     const at = item.indexOf('=');
@@ -59,11 +66,16 @@ function intakeAllow_(content, keys) {
 // 数値。clearable の項目は「なし」で未報告（null）へ戻せる。
 function intakeNumber_(content, key, opts) {
   if (!(key in content)) return undefined;
-  const raw = content[key];
-  if (opts.clearable && raw === 'なし') return null;
-  intakeCheck_(/^-?\d+(\.\d+)?$/.test(raw), 'INVALID_VALUE', key + '=' + raw);
+  let raw = content[key];
+  // 「なし・未報告・不明」は未報告。clearable の項目は null（消す）、それ以外は書かれていないものとして扱う。
+  if (['なし', '未報告', '不明'].includes(raw)) return opts.clearable ? null : undefined;
+  // 書き方の揺れ：数学のマイナス記号、桁区切りのカンマ、末尾の単位（kg・kcal・g・回・個・杯・本・枚・分・秒・%）。
+  raw = raw.replace(/^[\u2212\u2013]/, '-');
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?/.test(raw)) raw = raw.replace(/,/g, '');
+  raw = raw.replace(/^(-?\d+(?:\.\d+)?)\s*(kg|kcal|g|回|個|杯|本|枚|分|秒|%)$/i, '$1');
+  intakeCheck_(/^-?\d+(\.\d+)?$/.test(raw), 'INVALID_VALUE', key + '=' + content[key]);
   const n = Number(raw);
-  intakeCheck_(n >= opts.min && n <= opts.max && (!opts.int || Number.isInteger(n)), 'INVALID_VALUE', key + '=' + raw);
+  intakeCheck_(n >= opts.min && n <= opts.max && (!opts.int || Number.isInteger(n)), 'INVALID_VALUE', key + '=' + content[key]);
   return n;
 }
 function intakeChoice_(content, key, choices) {
@@ -76,13 +88,13 @@ function intakeDate_(v) {
   return v;
 }
 function intakeSession_(v) {
-  const m = /^(push|pull|leg)([2-9])?$/i.exec(v);
+  const m = /^(push|pull|leg)\s*([2-9])?$/i.exec(v);
   intakeCheck_(m, 'INVALID_SESSION', v);
   return m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() + (m[2] || '');
 }
 function intakeNo_(v) {
   if (v === '') return null;
-  intakeCheck_(/^\d+$/.test(v) && Number(v) >= 1, 'INVALID_NUMBER_COLUMN', v);
+  intakeCheck_(/^\d+(\.0+)?$/.test(v) && Number(v) >= 1, 'INVALID_NUMBER_COLUMN', v);
   return Number(v);
 }
 

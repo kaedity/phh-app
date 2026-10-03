@@ -179,8 +179,11 @@ public enum HealthPresentation {
     let groups = Dictionary(grouping: samples.filter { $0.metric == .bodyMass && $0.source.id == sourceID }, by: { HealthDates.local($0.start) })
     return groups.compactMap { date, allRows -> HealthWeightDay? in
       let rows = allRows.filter { $0.value != nil }; guard !rows.isEmpty else { return nil }
-      let latest = rows.sorted { $0.start == $1.start ? $0.id < $1.id : $0.start > $1.start }.first!
-      return HealthWeightDay(date: date, sourceID: sourceID, representativeID: latest.id, value: latest.value!, minimum: rows.map { $0.value! }.min()!, maximum: rows.map { $0.value! }.max()!, measurementCount: allRows.count, unknownCount: allRows.count - rows.count)
+      // 代表値は朝いちばんの測定（DESIGN 6章：朝・飲食前に測る）。4時より前の測定は夜更かし中の可能性があるので、
+      // 4時以降の測定があればその最初を使い、なければその日の最初を使う。範囲（最小〜最大）は全測定のまま。
+      let ordered = rows.sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
+      let morning = ordered.first { HealthDates.calendar.component(.hour, from: $0.start) >= 4 } ?? ordered.first!
+      return HealthWeightDay(date: date, sourceID: sourceID, representativeID: morning.id, value: morning.value!, minimum: rows.map { $0.value! }.min()!, maximum: rows.map { $0.value! }.max()!, measurementCount: allRows.count, unknownCount: allRows.count - rows.count)
     }.sorted { $0.date < $1.date }
   }
   /// 主睡眠/昼寝の境界は元セッションまたは明示した区間を受け、推定の隙間で結合しません。
@@ -194,5 +197,33 @@ public enum HealthPresentation {
       else { merged.append(interval) }
     }
     return HealthSleepSession(sourceID: sourceID, date: HealthDates.local(end), classification: classification, intervals: merged, seconds: merged.isEmpty ? nil : merged.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) })
+  }
+}
+
+// 体重の7日平均と週の変化（DESIGN 6章：判断は単日でなく7日平均）。測った日が7日のうち5日未満なら出さない。欠けた日は補わない。
+public struct HealthWeightTrend: Equatable, Sendable {
+  public let average: Double, previousAverage: Double?, change: Double?, percentPerWeek: Double?, measuredDays: Int
+}
+extension HealthPresentation {
+  static func shift(_ date: String, _ days: Int) -> String? {
+    guard let d = HealthDates.calendar.date(from: DateComponents(year: Int(date.prefix(4)), month: Int(date.dropFirst(5).prefix(2)), day: Int(date.suffix(2)))),
+          let s = HealthDates.calendar.date(byAdding: .day, value: days, to: d) else { return nil }
+    return HealthDates.local(s.addingTimeInterval(3600))
+  }
+  static func window(_ days: [HealthWeightDay], end: String, length: Int = 7) -> [HealthWeightDay] {
+    guard let start = shift(end, -(length - 1)) else { return [] }
+    return days.filter { $0.date >= start && $0.date <= end }
+  }
+  public static func weightTrend(_ days: [HealthWeightDay], end: String, minimumDays: Int = 5) -> HealthWeightTrend? {
+    let now = window(days, end: end); guard now.count >= minimumDays else { return nil }
+    let average = now.map(\.value).reduce(0, +) / Double(now.count)
+    let previous = shift(end, -7).map { window(days, end: $0) } ?? []
+    guard previous.count >= minimumDays else { return HealthWeightTrend(average: average, previousAverage: nil, change: nil, percentPerWeek: nil, measuredDays: now.count) }
+    let before = previous.map(\.value).reduce(0, +) / Double(previous.count), change = average - before
+    return HealthWeightTrend(average: average, previousAverage: before, change: change, percentPerWeek: before > 0 ? change / before * 100 : nil, measuredDays: now.count)
+  }
+  /// グラフ用の7日平均。各日について、その日までの7日に5日以上の測定がある日だけ点を作る。
+  public static func weightAverages(_ days: [HealthWeightDay], minimumDays: Int = 5) -> [(date: String, value: Double)] {
+    days.compactMap { day in let w = window(days, end: day.date); return w.count >= minimumDays ? (day.date, w.map(\.value).reduce(0, +) / Double(w.count)) : nil }
   }
 }

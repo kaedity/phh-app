@@ -33,7 +33,7 @@ function hubAggregate_(store,state,date,now) {
 function hubOperationResult_(store,id) {const op=store.get('Operations',id); if(!op)return {operation_id:id,status:'not_found',retryable:true};const es=store.find('OperationEntities','operation_id',id);return {environment:store.config.environment,operation_id:id,status:op.status,error_code:op.error_code,entity_ids:es.map(e=>e.entity_id),revisions:es.map(e=>e.revision),committed_at:op.committed_at,change_number:op.change_number,retryable:false};}
 function hubSaveOperation_(store,id,hash,actor,action,record,error,now) {
   store.put('Operations',{id,content_hash:hash,actor,action,status:error?'rejected':'committed',error_code:error || null,committed_at:new Date(now).toISOString(),change_number:hubSetting_(store,'next_change',0)});
-  if(record)store.put('OperationEntities',{id:hubId_(id+'|'+record.id),operation_id:id,table_name:record.type==='meal'?'Meals':record.type==='set'?'TrainingSets':record.type==='session'?'TrainingSessions':record.type==='cycle'?'TrainingCycles':['FoodVersions','Categories','Presets','GoalRules','DailyGoals','FoodDays','SupplementProducts','SupplementPlans','SupplementDays','HealthBatches','WaterIntakes'].includes(record.type)?record.type:'TrainingNotes',entity_id:record.id,revision:record.revision});
+  if(record)store.put('OperationEntities',{id:hubId_(id+'|'+record.id),operation_id:id,table_name:record.type==='meal'?'Meals':record.type==='set'?'TrainingSets':record.type==='session'?'TrainingSessions':record.type==='cycle'?'TrainingCycles':['FoodVersions','Categories','Presets','GoalRules','DailyGoals','FoodDays','SupplementProducts','SupplementPlans','SupplementDays','HealthBatches','WaterIntakes','CatalogEntries'].includes(record.type)?record.type:'TrainingNotes',entity_id:record.id,revision:record.revision});
   return hubOperationResult_(store,id);
 }
 function hubValidateMeal_(r) {
@@ -43,6 +43,7 @@ function hubValidateMeal_(r) {
   for(const k of ['kcal','protein_g','fat_g','carbohydrate_g'])ensure_(r[k]===null || Number.isFinite(r[k]) && r[k]>=0 && r[k]<=10000,'INVALID_VALUE');
 }
 function hubApplyApp_(store,op,now) {
+  if(typeof hubCatalogEntriesEnabled_==='function' && hubCatalogEntriesEnabled_() && op?.action==='save_food_catalog_entry')return hubCatalogEntryApply_(store,op,now);
   if(typeof hubHydrationEnabled_==='function' && hubHydrationEnabled_() && ['confirm_water','update_water','remove_water'].includes(op?.action))return hubHydrationApply_(store,op,now);
   if(typeof hubHealthEnabled_==='function' && hubHealthEnabled_() && op?.action==='save_health_delta')return hubHealthApply_(store,op,now);
   if(typeof hubP5Enabled_==='function' && hubP5Enabled_() && hubP5Actions_(HUB_PLANNING_LAYOUT_)[op?.action])return hubP5Apply_(store,op,now);
@@ -82,7 +83,7 @@ function hubApplyApp_(store,op,now) {
   return hubSaveOperation_(store,op.operation_id,hash,'app',op.action,record,null,now);
 }
 function hubProcessIntakeRow_(store,input,sheetRow,now) {
-  const cells=INTAKE_HEADERS_.map((_,i)=>intakeCell_(input[i]));if(cells.every(x=>x===''))return null;
+  const cells=INTAKE_HEADERS_.map((_,i)=>intakeCell_(input[i]));if(cells.every(x=>x===''))return null;cells[3]=intakeNormalizeDate_(cells[3]);
   const key=cells[0] || '#row'+sheetRow,hash=hubHash_(cells),state=hubEmptyState_(),prior=hubLoadLedger_(store,key,state,false),oldScan=store.get('IntakeScans',String(sheetRow)),firstSeen=prior?.first_seen ?? oldScan?.first_seen ?? now;
   const scan={id:String(sheetRow),sheet_row:sheetRow,intake_id:cells[0],content_hash:hash,first_seen:firstSeen,checked_at:now,status:'保留',message:'',record_id:null};
   const saveScan=(status,message,recordId)=>{scan.status=status;scan.message=message || '';scan.record_id=recordId || null;store.put('IntakeScans',scan);if(!oldScan || oldScan.content_hash!==hash || oldScan.status!==status){hubSet_(store,'publication_dirty',true,now);let day;try{day=intakeDate_(cells[3]);}catch(_){day=intakeJstDate_(now);}hubSet_(store,'publish:'+day,true,now);}};
@@ -93,6 +94,8 @@ function hubProcessIntakeRow_(store,input,sheetRow,now) {
   }
   const opId=hubId_(store.config.environment+'|intake|'+key);let applied,foodChanges=[],reason=null,message='',status='保存済み';
   try {
+    // 本文が「=」などで始まりSheetsが数式として扱ったセルは、エラー表示の文字列を記録にしない（10/4）。
+    intakeCheck_(!cells.some(c=>/^#(ERROR!|NAME\?|VALUE!|REF!|N\/A|DIV\/0!|NUM!)/.test(c)),'INVALID_CONTENT','セルが数式のエラーになっています。先頭の「=」を外すか全角にして書き直してください');
     if(cells[1]==='戻す') {
       const content=intakeContent_(cells[7]),target=content['対象受付番号'],ledger=target && hubLoadLedger_(store,target,state);
       if(ledger?.record_id) {const idx=store.get('RecordIndex',ledger.record_id);if(idx?.local_date)hubLoadDate_(store,idx.local_date,state);}
@@ -110,7 +113,9 @@ function hubProcessIntakeRow_(store,input,sheetRow,now) {
     }
     applied=candidate;message=applied.summary;
   } catch(e) {
-    const [code,...detail]=e.message.split(':');if(!(code in INTAKE_REASONS_))throw e;
+    // 想定外のコードでも、その行だけ要確認にして後ろの行と同期を止めない（10/4）。Googleの一時エラーなどコード形式でないものは再試行に回す。
+    let [code,...detail]=String(e.message).split(':');
+    if(!(code in INTAKE_REASONS_)) {if(!/^[A-Z][A-Z0-9_]+$/.test(code) || ['BUSY','STORAGE_UNAVAILABLE'].includes(code))throw e;detail=[code,...detail];code='INTERNAL';}
     if(code==='INCOMPLETE' && now-firstSeen<INTAKE_WAIT_MS_) {status='保留';message='書き込みの完了を待っています';}
     else {status='要確認';reason=code;message=(INTAKE_REASONS_[code] || code)+(detail.length?'：'+detail.join(':'):'');store.put('Reviews',{id:hubUUID_(),intake_id:cells[0],sheet_row:sheetRow,reason,message,created_at:now,status:'未対応',resolution:null,notified_at:null,renotified_date:null});}
   }
@@ -141,6 +146,7 @@ function hubChanges_(store,q) {
   if(typeof hubP5Enabled_==='function' && hubP5Enabled_())out.planning_contract=1;
   if(typeof hubHealthEnabled_==='function' && hubHealthEnabled_())out.health_contract=1;
   if(typeof hubHydrationEnabled_==='function' && hubHydrationEnabled_())out.hydration_contract=1;
+  if(typeof hubCatalogEntriesEnabled_==='function' && hubCatalogEntriesEnabled_())out.catalog_entry_contract=1;
   while(Utilities.newBlob(JSON.stringify(out)).getBytes().length>200000 && out.changes.length>1) {out.changes.pop();out.next_cursor=out.changes[out.changes.length-1].change.change_number;out.has_more=true;}
   ensure_(Utilities.newBlob(JSON.stringify(out)).getBytes().length<=200000,'RESPONSE_TOO_LARGE');return out;
 }

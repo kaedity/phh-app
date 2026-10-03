@@ -332,6 +332,59 @@ import XCTest
         reveal(total, app: app); XCTAssertTrue(total.exists)
         proof(app, "large-preset-confirmed-once")
     }
+    func testReselectingOtherReturnsToRootWithoutChangingFoodRecords() {
+        let app = launch(["--p7-preview", "--light"])
+        XCTAssertGreaterThanOrEqual(app.buttons["hub-tab-other"].frame.height, 44)
+        XCTAssertGreaterThanOrEqual(app.buttons["hub-tab-other"].frame.width, 90)
+        tab("その他", app: app)
+        let goal = app.staticTexts["目標"].firstMatch
+        XCTAssertTrue(goal.waitForExistence(timeout: 10)); goal.tap()
+        XCTAssertTrue(app.navigationBars["目標の内訳"].waitForExistence(timeout: 5))
+        let fixedGoal = app.staticTexts["固定目標"].firstMatch
+        reveal(fixedGoal, app: app); fixedGoal.tap()
+        XCTAssertTrue(app.navigationBars["固定目標の設定"].waitForExistence(timeout: 5))
+        tab("その他", app: app)
+        XCTAssertTrue(app.staticTexts["カロリー・PFCの目標設定"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["固定目標の設定"].exists)
+        tab("食事", app: app)
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 5))
+        proof(app, "other-reselect-keeps-food")
+    }
+
+    func testExactJapaneseSearchFindsActiveDuplicateAndCanClearQuery() {
+        let app = launch(["--p4-preview", "--duplicate-preset-search", "--light"])
+        let search = app.textFields["food-preset-search"]
+        search.tap(); search.typeText("架空の確認食品")
+        XCTAssertEqual(app.buttons.matching(identifier:"架空の確認食品を追加").count, 1)
+        XCTAssertTrue(app.staticTexts["food-preset-search-count"].label.contains("1件"))
+        app.buttons["food-preset-clear"].tap()
+        XCTAssertEqual(search.value as? String, "食べ物を検索")
+        XCTAssertTrue(app.buttons["全粒粉パンを追加"].exists)
+        proof(app,"exact-japanese-active-preset-search")
+    }
+
+    func testMealQuantityCanBeEditedRepeatedlyWithoutWaitingForCloudReceipt() {
+        let app = launch(["--p4-preview", "--common-outbox", "--light"])
+        tap("全粒粉パンを追加", app: app)
+        let edit = app.buttons.matching(identifier: "量・日付を変更").firstMatch
+        reveal(edit, app: app)
+        XCTAssertTrue(edit.isEnabled)
+        XCTAssertTrue(app.staticTexts["端末に保存済み · 送信待ち"].exists)
+        edit.tap()
+        tap("2倍", app: app)
+        app.navigationBars.buttons["保存"].tap()
+        XCTAssertTrue(app.staticTexts["200"].waitForExistence(timeout: 5))
+        reveal(edit, app: app)
+        XCTAssertTrue(edit.isEnabled)
+        edit.tap()
+        tap("量を0.5倍増やす", app: app)
+        app.navigationBars.buttons["保存"].tap()
+        XCTAssertTrue(app.staticTexts["300"].waitForExistence(timeout: 5))
+        reveal(edit, app: app)
+        XCTAssertTrue(edit.isEnabled)
+        proof(app, "queued-meal-edits-300-without-cloud")
+    }
+
     func testPresetSearchUsesReadingAndSavedLocalAlias() {
         let app = launch(["--p4-preview", "--light"])
         let search=app.textFields["food-preset-search"]
@@ -407,6 +460,27 @@ import XCTest
         proof(app,"p86-food-menu-and-preserved-total")
     }
 
+    func testCatalogDeletionAndRestoreKeepRecordedMeal() {
+        let app=launch(["--p4-preview","--light"])
+        tap("検索と記録の設定",app:app);tap("プリセットを編集",app:app)
+        tap("全粒粉パンの食品の操作",app:app);tap("削除",app:app)
+        let alert=app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout:3));alert.buttons["削除"].tap()
+        let bread=app.buttons["全粒粉パンの食品の操作"]
+        XCTAssertFalse(bread.exists)
+        XCTAssertFalse(app.buttons["いつもの朝食のプリセットを編集"].exists)
+        let deleted=app.descendants(matching:.any)["catalog-deleted"].firstMatch
+        reveal(deleted,app:app);deleted.tap()
+        let restore=app.buttons["復元"]
+        reveal(restore,app:app);restore.tap()
+        reveal(bread,app:app);XCTAssertTrue(bread.exists)
+        XCTAssertTrue(app.buttons["いつもの朝食のプリセットを編集"].exists)
+        app.buttons["閉じる"].tap()
+        let total=app.staticTexts.matching(identifier:"175").firstMatch
+        reveal(total,app:app);XCTAssertTrue(total.exists)
+        proof(app,"p85-catalog-delete-restore-history-preserved")
+    }
+
     func testWaterAdditionUndoAndDetailKeepFoodTotal() {
         let app=launch(["--p7-preview","--light"])
         tab("食事",app:app);tap("water-add",app:app)
@@ -443,6 +517,24 @@ import XCTest
         XCTAssertTrue(app.switches["energy-review-morning-confirmation"].waitForExistence(timeout:3))
         proof(app,"p84-energy-review")
         back(app);tab("ホーム",app:app);XCTAssertTrue(app.staticTexts["/ 2,000 kcal"].exists)
+    }
+
+    func testScrolledFoodCancellationUndoStaysAboveTabBar() {
+        let app = launch(["--p7-preview", "--light", "--reduce-motion"])
+        tab("食事", app: app)
+        let cancel = app.buttons.matching(identifier: "取消").firstMatch
+        reveal(cancel, app: app); cancel.tap()
+        let confirmation = app.buttons["この食事を取り消す"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 2)); confirmation.tap()
+        let undo = app.buttons["food-undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 1))
+        let undoFrame = undo.frame, tabFrame = app.buttons["hub-tab-food"].frame
+        proof(app, "food-cancel-undo-visible-before-expiry")
+        XCTAssertGreaterThan(undoFrame.minY, 60)
+        XCTAssertLessThanOrEqual(undoFrame.maxY, tabFrame.minY, "Undo \(undoFrame), tab \(tabFrame)")
+        XCTAssertTrue(undo.isHittable)
+        undo.tap()
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 2))
     }
 
 }

@@ -14,7 +14,7 @@ function hubExpiryPlan_(manifest,c,now) {
   return {expired:now>=expiry,pages:manifest.pages,request_id:manifest.request_id};
 }
 function hubExpireDerivedPages_(manifest,c,root,now,preview=false) {
-  ensure_(!c.real_data_enabled,'REAL_DATA_DISABLED');hubBackupPrivate_(root,c.owner);
+  hubBackupPrivate_(root,c.owner);
   ensure_(![c.canonical,c.inbox,c.results].includes(root.getId()),'EXPIRY_SOURCE');
   const plan=hubExpiryPlan_(manifest,c,now);if(!plan.expired)return {status:'ready',expired:false,pages:plan.pages.length};
   const files=hubCheckDerivedPages_(plan,c,root);
@@ -59,7 +59,7 @@ function hubReadDerivedJob_(folder,c) {
   return {job,file};
 }
 function hubSaveDerivedJob_(manifest,c,folder) {
-  ensure_(!c.real_data_enabled,'REAL_DATA_DISABLED');hubBackupPrivate_(folder,c.owner);
+  hubBackupPrivate_(folder,c.owner);
   ensure_(folder.getName()===hubDerivedJobName_(manifest,c),'EXPIRY_JOB_NAME');
   const plan=hubExpiryPlan_(manifest,c,Date.now());hubCheckDerivedPages_(plan,c,folder);
   const all=hubDerivedJobFiles_(folder,c),saved=all.filter(f=>f.getName()==='expiry-manifest.json');
@@ -97,7 +97,7 @@ function hubCompleteDerivedJob_(folder,c,now,preview=false) {
   hubWriteDerivedResult_(job,c);return result;
 }
 function hubCleanupDerivedJobs_(c,root,now,preview=false) {
-  ensure_(!c.real_data_enabled,'REAL_DATA_DISABLED');hubBackupPrivate_(root,c.owner);
+  hubBackupPrivate_(root,c.owner);
   const folders=[],it=root.getFolders();while(it.hasNext()){ensure_(folders.length<1000,'EXPIRY_JOB_INDEX_LIMIT');folders.push(it.next());}
   ensure_(new Set(folders.map(f=>f.getName())).size===folders.length,'EXPIRY_JOB_INDEX');
   folders.sort((a,b)=>a.getName().localeCompare(b.getName()));const props=PropertiesService.getScriptProperties(),cursor=props.getProperty('PHH_QUERY_CLEANUP_CURSOR') || '';
@@ -107,7 +107,7 @@ function hubCleanupDerivedJobs_(c,root,now,preview=false) {
   if(!preview && chosen.length)props.setProperty('PHH_QUERY_CLEANUP_CURSOR',chosen[0].getName());return {processed:results.length,expired:results.filter(r=>r.expired).length,preview};
 }
 function runHubExpiryCleanup() {
-  const c=hubConfig_();ensure_(!c.real_data_enabled,'REAL_DATA_DISABLED');hubCheckACL_(c);hubCheckBookEnvs_(c);
+  const c=hubConfig_();hubCheckACL_(c);hubCheckBookEnvs_(c);
   const id=PropertiesService.getScriptProperties().getProperty('PHH_QUERY_ROOT_ID');if(!id)return {configured:false,processed:0};
   // 同期用ScriptLockをDrive作業中に占有しない。派生ジョブ/結果一覧はUserLockで直列化する。
   const lock=LockService.getUserLock();ensure_(lock.tryLock(1000),'BUSY');try{return hubCleanupDerivedJobs_(c,DriveApp.getFolderById(id),Date.now());}finally{lock.releaseLock();}

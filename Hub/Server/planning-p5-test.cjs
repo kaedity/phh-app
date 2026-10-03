@@ -30,7 +30,8 @@ test('typed roots and nutrient manual child rows reconstruct every model exactly
  assert.equal(rows.find(r=>r.table==='SupplementDayNutrients' && r.row.nutrient_id==='protein').row.value,null);
 });
 test('unapproved real data unknown fields invalid numeric and dates reject before planning rows',()=>{
- for(const mutate of [o=>o.synthetic=false,o=>o.approval_state='draft',o=>o.payload.goalRule.base.kcal=-1,o=>o.payload.goalRule.effectiveFrom='2026-02-30',o=>o.payload.goalRule.base.hidden=1]){const o=copy(operations[0]);mutate(o);assert.throws(()=>ctx.hubP5RowPlan_(o,now,layout));}
+ {const o=copy(operations[0]);o.synthetic=false;assert.throws(()=>ctx.hubCheckRequest_({environment:o.environment,real_data_enabled:false},o),/REAL_DATA/);assert.doesNotThrow(()=>ctx.hubCheckRequest_({environment:o.environment,real_data_enabled:true},o));}
+ for(const mutate of [o=>o.synthetic='no',o=>o.approval_state='draft',o=>o.payload.goalRule.base.kcal=-1,o=>o.payload.goalRule.effectiveFrom='2026-02-30',o=>o.payload.goalRule.base.hidden=1]){const o=copy(operations[0]);mutate(o);assert.throws(()=>ctx.hubP5RowPlan_(o,now,layout));}
 });
 test('calculated goal food completion and macro units cannot be forged',()=>{
  let o=copy(operations[1]);o.payload.dailyGoal.total.kcal=999;assert.throws(()=>ctx.hubP5RowPlan_(o,now,layout),/GOAL_TOTAL_MISMATCH/);

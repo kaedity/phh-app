@@ -196,6 +196,35 @@ import Testing
     }
 }
 
+extension SyncQueueBatchTests {
+    @Test func stuckHeadCanBeRequeuedOrDiscardedSoLaterOperationsSend() async throws {
+        let store = try HubStore(owner: "synthetic@example.test"), remote = QueueRemote()
+        try ready(store)
+        let head = meal(), tail = meal(); try store.enqueueBatch([head, tail])
+        remote.rejections[head.id] = ("STORAGE_TIMEOUT", false)
+        let engine = SyncEngine(store: store, transport: remote); await engine.synchronize(date: day)
+        #expect(try store.pending().first?.state == .invalid); #expect(remote.committed.isEmpty)
+        remote.rejections = [:]; try store.requeueRejected(head.id)
+        await engine.synchronize(date: day, forceQueued: true)
+        #expect(remote.committed == [head.id, tail.id]); #expect(try store.pending().isEmpty)
+        let again = meal(), after = meal(); try store.enqueueBatch([again, after]); remote.rejections[again.id] = ("REVISION_CONFLICT", false)
+        await engine.synchronize(date: day, forceQueued: true)
+        try store.discardRejected(again.id); await engine.synchronize(date: day, forceQueued: true)
+        #expect(remote.committed.contains(after.id)); #expect(try store.pending().isEmpty)
+    }
+    @Test func retryableServerRejectionStaysQueuedForAutomaticResend() async throws {
+        let store = try HubStore(owner: "synthetic@example.test"), remote = QueueRemote()
+        try ready(store)
+        let op = meal(); try store.enqueue(op)
+        remote.rejections[op.id] = ("HEALTH_DRIVE_UNAVAILABLE", true)
+        let engine = SyncEngine(store: store, transport: remote); await engine.synchronize(date: day)
+        #expect(try store.pending().first?.state == .queued)
+        remote.rejections = [:]
+        await engine.synchronize(date: day, forceQueued: true)
+        #expect(remote.committed == [op.id]); #expect(try store.pending().isEmpty)
+    }
+}
+
 @MainActor private final class QueueRemote: HubTransport {
     var connected = true
     var resolved: [String] = []
@@ -206,6 +235,7 @@ import Testing
     var resultFailure: Error?
     var rejectionCode: String?
     var loseResponseID: String?
+    var rejections: [String: (code: String, retryable: Bool)] = [:]
     static func emptyDelta() -> Delta {
         Delta(schema_version: 1, environment: hubEnvironment, generation: 1, health_contract: 1,
             planning_contract: 1, food_contract: 1, snapshot_revision: 0, changes: [], next_cursor: 0, has_more: false)
@@ -223,6 +253,9 @@ import Testing
     }
     func submit(_ operation: HubOperation) async throws -> Receipt {
         submitted.append(operation)
+        if let rejection = rejections[operation.id] {
+            return Receipt(environment: hubEnvironment, operation_id: operation.id, status: "rejected", error_code: rejection.code, retryable: rejection.retryable)
+        }
         if let rejectionCode {
             return Receipt(environment: hubEnvironment, operation_id: operation.id, status: "rejected", error_code: rejectionCode, retryable: false)
         }

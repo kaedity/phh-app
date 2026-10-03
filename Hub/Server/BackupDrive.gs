@@ -4,13 +4,14 @@ function hubBackupPrivate_(item,owner) {
   ensure_(item.getOwner().getEmail()===owner && item.getSharingAccess()===DriveApp.Access.PRIVATE && item.getEditors().every(u=>u.getEmail()===owner) && item.getViewers().length===0,'BACKUP_ACL');
 }
 function hubBackupCapture_(store,now) {
-  ensure_(!store.config.real_data_enabled,'BACKUP_REAL_DATA_DISABLED');
   // SheetsのMap/cache/pendingを経由しない。物理行と設定を毎回読む。
   const read=name=>store instanceof HubSheetsStore ? hubBackupReadSheet_(store.book.getSheetByName(name),name) : store.all(name);
   const settings=()=>hubBackupReader_({ ...Object.fromEntries(Object.keys(HUB_SCHEMA_.tables).map(n=>[n,[]])),Settings:read('Settings')},store.config.environment);
   const start=settings(),start_revision=hubSetting_(start,'next_change'),start_generation=hubSetting_(start,'generation'),tables={};
   for(const name of Object.keys(HUB_SCHEMA_.tables))tables[name]=read(name);
   hubEnvironment_(start);
+  // 実データでも採取する（10/4）。ただし正本のSettingsと、このGASの設定の実データ有無が一致していること。
+  ensure_(hubSetting_(start,'real_data_enabled',false)===(store.config.real_data_enabled===true),'REAL_DATA_SETTING_MISMATCH');
   const end=settings();
   const bundle=hubBackupCreate_(tables,{environment:store.config.environment,start_revision,start_generation,end_revision:hubSetting_(end,'next_change'),end_generation:hubSetting_(end,'generation'),now});return HUB_SCHEMA_.tables.HealthBatches?hubHealthBackupCapture_(bundle,tables,store.config):bundle;
 }
@@ -84,7 +85,6 @@ function hubBackupWriteFolder_(root,bundle,owner) {
 function hubBackupRestoreBook_(book,bundle,sourceConfig,now) {
   // 復元先は既存3ブックと異なる、全16表が見出しだけの本人限定ブック。
   // 接続設定は切り替えない。失敗した復元先も残し、元の正本を変更しない。
-  ensure_(!sourceConfig.real_data_enabled,'BACKUP_REAL_DATA_DISABLED');
   ensure_(![sourceConfig.canonical,sourceConfig.inbox,sourceConfig.results].includes(book.getId()),'BACKUP_SOURCE_TARGET');
   const plan=hubBackupRestorePlan_(bundle.manifest,bundle.objects,now);
   ensure_(plan.environment===sourceConfig.environment,'BACKUP_ENVIRONMENT');
@@ -115,7 +115,7 @@ function hubBackupRestoreBook_(book,bundle,sourceConfig,now) {
   return hubBackupVerifyRestored_(book,bundle,sourceConfig,now);
 }
 function hubBackupVerifyRestored_(book,bundle,sourceConfig,now) {
-  ensure_(!sourceConfig.real_data_enabled && ![sourceConfig.canonical,sourceConfig.inbox,sourceConfig.results].includes(book.getId()),'BACKUP_SOURCE_TARGET');
+  ensure_(![sourceConfig.canonical,sourceConfig.inbox,sourceConfig.results].includes(book.getId()),'BACKUP_SOURCE_TARGET');
   hubBackupPrivate_(DriveApp.getFileById(book.getId()),sourceConfig.owner);
   const plan=hubBackupRestorePlan_(bundle.manifest,bundle.objects,now),names=Object.keys(HUB_SCHEMA_.tables);
   ensure_(plan.environment===sourceConfig.environment,'BACKUP_ENVIRONMENT');
@@ -136,7 +136,6 @@ function hubBackupVerifyRestored_(book,bundle,sourceConfig,now) {
 
 // 実行入口はprivateの検証関数から呼ぶ。稼働先の設定や世代は変更しない。
 function hubBackupRoot_(config) {
-  ensure_(!config.real_data_enabled,'BACKUP_REAL_DATA_DISABLED');
   const properties=PropertiesService.getScriptProperties();let id=properties.getProperty('PHH_BACKUP_ROOT_ID');
   if(!id) {const folder=DriveApp.createFolder('Personal Health Hub — '+config.environment+' Backups');hubBackupPrivate_(folder,config.owner);id=folder.getId();properties.setProperty('PHH_BACKUP_ROOT_ID',id);}
   const root=DriveApp.getFolderById(id);hubBackupPrivate_(root,config.owner);return root;
@@ -163,8 +162,7 @@ function hubBackupEmptyBook_(root,owner,manifestId) {
 }
 function hubRestoreLastBackup_() {
   return hubRun_(null,store=>{
-    ensure_(!store.config.real_data_enabled,'BACKUP_REAL_DATA_DISABLED');
-    const props=PropertiesService.getScriptProperties(),saved=JSON.parse(props.getProperty('PHH_BACKUP_LAST') || 'null');
+      const props=PropertiesService.getScriptProperties(),saved=JSON.parse(props.getProperty('PHH_BACKUP_LAST') || 'null');
     ensure_(saved?.complete===true,'BACKUP_INCOMPLETE');
     const target=props.getProperty('PHH_BACKUP_RESTORE_TARGET'),attempt=JSON.parse(props.getProperty('PHH_BACKUP_RESTORE_ATTEMPT') || 'null');
     ensure_(!target || attempt,'BACKUP_RESTORE_ALREADY_ATTEMPTED');
@@ -192,7 +190,7 @@ function hubRestoreLastBackup_() {
 }
 
 function hubBackupPrune_(root,config) {
-  ensure_(!config.real_data_enabled,'BACKUP_REAL_DATA_DISABLED');hubBackupPrivate_(root,config.owner);
+  hubBackupPrivate_(root,config.owner);
   const it=root.getFolders(),complete=[],incomplete=[],allFolders=[];
   while(it.hasNext()) {
     const folder=it.next();allFolders.push(folder);ensure_(/^PHH-\d{4}-\d{2}-\d{2}-[a-f0-9-]{36}$/.test(folder.getName()),'BACKUP_UNEXPECTED_FOLDER');hubBackupPrivate_(folder,config.owner);

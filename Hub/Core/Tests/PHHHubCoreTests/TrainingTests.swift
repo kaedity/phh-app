@@ -155,10 +155,56 @@ struct TrainingEstimateTests {
     @Test func nextTargetRaisesOnlyWhenEveryTopSetReachedTheReps() throws {
         let ss = try [base.session(1,date:"2026-10-01"),base.session(2,date:"2026-10-03")]
         let reached = try TrainingSnapshot(sessions:ss,sets:[base.set(11,session:1,weight:55,reps:8),base.set(12,session:2,weight:60,reps:8),base.set(13,session:2,weight:60,reps:8)],notes:[]).series(for:.bench)[0].nextTarget()
-        #expect(reached == TrainingNextTarget(weight:62.5,reps:8,raise:true,reason:"前回(2026-10-03)は60kgの全2セットで8回に届きました。"))
+        #expect(reached == TrainingNextTarget(weight:62.5,reps:8,raise:true,reason:"前回（10/3）は60kgの全2セットで8回に届きました。"))
         let short = try TrainingSnapshot(sessions:ss,sets:[base.set(12,session:2,weight:60,reps:8),base.set(13,session:2,weight:60,reps:6)],notes:[]).series(for:.bench)[0].nextTarget()
         #expect(short?.raise == false); #expect(short?.weight == 60); #expect(short?.reps == 8)
         let bodyweight = try TrainingSnapshot(sessions:ss,sets:[base.set(14,session:2,exercise:"懸垂",weight:0,reps:8,basis:.bodyweight)],notes:[]).series(for:.pullup)[0].nextTarget()
         #expect(bodyweight == nil)
     }
+}
+
+struct TrainingReviewFixTests {
+    let base = TrainingTests()
+    @Test func failedSetsNeverBecomeEstimatesBestsOrRaiseTheTarget() throws {
+        let ss = try [base.session(1,date:"2026-10-01"),base.session(2,date:"2026-10-03")]
+        let ok = try base.set(11,session:1,weight:60,reps:8)
+        let failed = try base.set(12,session:2,weight:100,reps:3).with(successful:false)
+        let snapshot = try TrainingSnapshot(sessions:ss,sets:[ok,failed],notes:[]), series = snapshot.series(for:.bench)[0]
+        #expect(failed.estimatedOneRM == nil)
+        #expect(series.points(.estimatedOneRM).map(\.id) == [ok.id]); #expect(series.personalBestIDs(.estimatedOneRM).isEmpty)
+        #expect(series.points(.reps).count == 2)
+        let target = try TrainingSnapshot(sessions:ss,sets:[try base.set(13,session:2,weight:60,reps:8),try base.set(14,session:2,weight:60,reps:8).with(successful:false)],notes:[]).series(for:.bench)[0].nextTarget()
+        #expect(target?.raise == false)
+    }
+    @Test func assistedPullupsNeverBecomePersonalBests() throws {
+        let ss = try [base.session(1,date:"2026-10-01",name:"Pull"),base.session(2,date:"2026-10-03",name:"Pull")]
+        let series = try TrainingSnapshot(sessions:ss,sets:[try base.set(11,session:1,exercise:"懸垂",weight:20,reps:8,basis:.assisted),try base.set(12,session:2,exercise:"懸垂",weight:30,reps:8,basis:.assisted)],notes:[]).series(for:.pullup)[0]
+        #expect(series.personalBestIDs(.weight).isEmpty)
+    }
+    @Test func currentCycleIsTheUnfinishedOneNotTheFirstByName() throws {
+        func plan(_ n: Int, _ name: String) throws -> TrainingCycleReference { try .init(id:base.id(90+n),name:name,sourcePath:"p\(n).md",markdown:Data((1...9).map { "## \($0). Session \($0) \(["Pull-A","Push-R/T","Leg-2"][($0-1)%3])" }.joined(separator:"\n").utf8)) }
+        let old = try plan(1,"Cycle9"), next = try plan(2,"Cycle10")
+        let done = try (0..<9).map { i in try base.session(10+i,date:String(format:"2026-09-%02d",10+i),name:["Pull","Push","Leg"][i%3],state:.completed,cycle:old.id,slot:old.slots[i].id) }
+        let sets = try done.enumerated().map { i, s in try base.set(100+i,session:10+i) }
+        let snapshot = try TrainingSnapshot(sessions:done,sets:sets,notes:[])
+        #expect(snapshot.currentFirst([old,next]).first?.id == next.id)
+        let started = try base.session(30,date:"2026-10-10",name:"Pull",state:.completed,cycle:next.id,slot:next.slots[0].id)
+        let later = try TrainingSnapshot(sessions:done+[started],sets:sets+[try base.set(130,session:30)],notes:[])
+        #expect(later.currentFirst([old,next]).map(\.id) == [next.id, old.id])
+    }
+}
+
+struct TrainingElapsedTests {
+    let base = TrainingTests()
+    @Test func elapsedUsesEndStartOrDateAndSwitchesToDays() throws {
+        let now = TrainingElapsed.instant("2026-10-04T12:00:00+09:00")!
+        let ss = try [base.session(1,date:"2026-10-03",name:"Push",state:.completed).withTimes(start:nil,end:"2026-10-03T20:00:00.000+09:00"),
+                      base.session(2,date:"2026-10-01",name:"Pull",state:.completed).withTimes(start:"2026-10-01T19:00:00+09:00",end:nil),
+                      base.session(3,date:"2026-10-02",name:"Leg",state:.completed)]
+        let snapshot = try TrainingSnapshot(sessions:ss,sets:[try base.set(11,session:1),try base.set(12,session:2),try base.set(13,session:3)],notes:[])
+        #expect(TrainingElapsed.summary(snapshot,today:"2026-10-04",now:now) == "Push 16時間 · Pull 開始から2日 · Leg 10/2（2日前）")
+    }
+}
+extension TrainingSession {
+    func withTimes(start: String?, end: String?) throws -> TrainingSession { try TrainingSession(id:id,date:date,name:name,lifecycle:lifecycle,cycleID:cycleID,slotID:slotID,startedAt:start,endedAt:end) }
 }

@@ -6,7 +6,13 @@ struct EnergyReviewPage: View {
     let hub: HubStore, planning: PlanningScreenModel, health: HealthScreenModel, date: String
     @AppStorage("energyReview.g02.lastReviewedOn") private var lastReviewedOn = ""
     @AppStorage("energyReview.g02.lastInitialAdjustmentReviewedOn") private var lastInitialAdjustmentReviewedOn = ""
-    @State private var morningConfirmed = false
+    // 朝の測定の確認は取得元ごとに端末へ覚える（開くたびに外れない。10/4）。
+    @AppStorage("energyReview.morningConfirmedSources") private var confirmedSources = ""
+    private var morningConfirmed: Binding<Bool> {
+        Binding(get: { confirmedSources.split(separator: ",").map(String.init).contains(health.selectedWeightSource ?? "") },
+                set: { on in var ids = Set(confirmedSources.split(separator: ",").map(String.init)); let id = health.selectedWeightSource ?? ""
+                    guard !id.isEmpty else { return }; if on { ids.insert(id) } else { ids.remove(id) }; confirmedSources = ids.sorted().joined(separator: ",") })
+    }
     @State private var report: EnergyReviewReport?
     @State private var sourceNames: [String: String] = [:]
     @State private var message = ""
@@ -27,7 +33,7 @@ struct EnergyReviewPage: View {
                         Label(sourceNames[health.selectedWeightSource ?? ""] ?? "体重の取得元を選択", systemImage: "scalemass")
                     }.accessibilityIdentifier("energy-review-source")
                 }
-                Toggle("表示する体重は、朝の起床後・トイレ後・飲食前に測った値です", isOn: $morningConfirmed)
+                Toggle("表示する体重は、朝の起床後・トイレ後・飲食前に測った値です", isOn: morningConfirmed)
                     .font(.subheadline).accessibilityIdentifier("energy-review-morning-confirmation")
                 Text("体重の時刻から測定条件を推測せず、この確認がある測定だけを使います。")
                     .font(.caption).foregroundStyle(.secondary)
@@ -46,7 +52,7 @@ struct EnergyReviewPage: View {
                         Text("計算に使わなかった日").font(.headline)
                         ForEach(report.excludedDays) { day in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(day.date).font(.subheadline.bold())
+                                Text(mockDay(day.date)).font(.subheadline.bold())
                                 Text(day.reasons.map(\.title).joined(separator: "・")).font(.caption).foregroundStyle(.secondary)
                             }.accessibilityElement(children: .combine)
                         }
@@ -56,12 +62,12 @@ struct EnergyReviewPage: View {
             if !message.isEmpty {
                 HubMockCard { Text(message).font(.subheadline).foregroundStyle(.secondary) }
             }
-            Button("端末の記録で再計算") { morningConfirmed = false; reload() }
+            Button("端末の記録で再計算") { reload() }
                 .accessibilityIdentifier("energy-review-refresh")
         }
-        .task(id: date) { morningConfirmed = false; reload() }
-        .onChange(of: morningConfirmed) { _, _ in reload() }
-        .onChange(of: health.selectedWeightSource) { _, _ in morningConfirmed = false; reload() }
+        .task(id: date) { reload() }
+        .onChange(of: confirmedSources) { _, _ in reload() }
+        .onChange(of: health.selectedWeightSource) { _, _ in reload() }
     }
 
     @ViewBuilder private func proposalCard(_ report: EnergyReviewReport) -> some View {
@@ -181,7 +187,7 @@ struct EnergyReviewPage: View {
             for sample in samples { names[sample.source.id] = sample.source.name }
             sourceNames = names
             let weightDays = try HealthPresentation.weightDays(samples, sourceID: health.selectedWeightSource ?? "")
-                .map { try EnergyReviewWeightDay(healthDay: $0, morningMeasurementConfirmed: morningConfirmed) }
+                .map { try EnergyReviewWeightDay(healthDay: $0, morningMeasurementConfirmed: morningConfirmed.wrappedValue) }
             report = try EnergyReview.evaluate(asOf: date, goal: rule, intakeDays: intakeDays, weights: weightDays,
                                                lastReviewedOn: lastReviewedOn.isEmpty ? nil : lastReviewedOn,
                                                lastInitialAdjustmentReviewedOn: lastInitialAdjustmentReviewedOn.isEmpty ? nil : lastInitialAdjustmentReviewedOn)

@@ -54,6 +54,13 @@ class HubSheetsStore {
     targets.forEach((t,i)=>{const row=hubDecode_(t.table,result.valueRanges[i].values?.[0] || []);ensure_(row.id===t.id,'INDEX_CORRUPT');this.positions.set(t.key,t.pos);this.cache[t.key]=row;});
   }
   matching(table, field, value) {
+    // 同じ実行の中で同じ検索をくり返さない（10/4：セッション終了時の20行で日付の索引を毎行読み直していた）。
+    // ディスク上の結果だけを覚え、未確定の行はfind()が重ねる。commitでディスクが変わるので忘れる。
+    const memoKey=table+'\0'+field+'\0'+String(value);if(!this.matchMemo)this.matchMemo=new Map();
+    if(this.matchMemo.has(memoKey))return this.matchMemo.get(memoKey).map(hubClone_);
+    const rows=this.matchingFromDisk_(table,field,value);this.matchMemo.set(memoKey,rows.map(hubClone_));return rows;
+  }
+  matchingFromDisk_(table, field, value) {
     const sh=this.sheet(table), col=HUB_SCHEMA_.tables[table].columns.findIndex(c=>c.name===field);
     ensure_(col>=0,'INDEX_FIELD'); if(this.diskLast[table]<2)return [];
     const found=sh.getRange(2,col+1,this.diskLast[table]-1,1).createTextFinder(String(value)).matchEntireCell(true).matchCase(true).useRegularExpression(false).findAll();
@@ -91,6 +98,7 @@ class HubSheetsStore {
   put(table,row) { hubRow_(table,row); const key=table+'\0'+row.id;this.get(table,row.id);if(!this.positions.has(key))this.positions.set(key,++this.last[table]);this.pending.set(key,hubClone_(row)); }
   position(table,id) { return this.positions.get(table+'\0'+id); }
   commit() {
+    this.matchMemo=new Map();
     const requests=[],fresh=new Map();
     if(this.healthStaged){const rows=[...this.pending].filter(([key,row])=>this.cache[key] && stable_(this.cache[key])!==stable_(row)),ranges=rows.map(([key])=>{const t=key.split('\0')[0],p=this.positions.get(key);return "'"+t+"'!A"+p+':'+hubColumn_(HUB_SCHEMA_.tables[t].columns.length)+p;});if(rows.length){const read=this.readBatch_(ranges);ensure_(read.valueRanges?.length===rows.length,'HEALTH_STATE_READBACK');rows.forEach(([key],i)=>fresh.set(key,hubDecode_(key.split('\0')[0],read.valueRanges[i].values?.[0] || [])));}}
     for(const table of Object.keys(this.sheets)) {const sh=this.sheets[table],maximum=this.healthDiskMax?.[table] ?? sh.getMaxRows();if(this.last[table]>maximum)requests.push({appendDimension:{sheetId:sh.getSheetId(),dimension:'ROWS',length:this.last[table]-maximum}});}

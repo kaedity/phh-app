@@ -8,11 +8,15 @@
       let empty = ProcessInfo.processInfo.arguments.contains("--empty")
       if ProcessInfo.processInfo.arguments.contains("--common-outbox") {
         let hub=try! HubStore(owner:"synthetic@example.test")
-        let page=try! JSONDecoder().decode(Delta.self,from:Data(#"{"schema_version":1,"environment":"PHH_PRODUCTION","generation":1,"food_contract":1,"snapshot_revision":0,"changes":[],"next_cursor":0,"has_more":false}"#.utf8))
+        let page=try! JSONDecoder().decode(Delta.self,from:Data(#"{"schema_version":1,"environment":"PHH_PRODUCTION","generation":1,"food_contract":1,"catalog_entry_contract":1,"snapshot_revision":0,"changes":[],"next_cursor":0,"has_more":false}"#.utf8))
         try! hub.apply(page);let common=FoodHubStore(hub:hub);try! common.saveCatalog(FoodPreviewData.catalog)
         _model=State(initialValue:try! FoodScreenModel(store:common,onSaved:{}));return
       }
       var catalog = empty ? try! FoodCatalog() : FoodPreviewData.catalog
+      if ProcessInfo.processInfo.arguments.contains("--duplicate-preset-search") {
+        try! catalog.save(FoodPreset(name:"架空の確認食品",components:[.init(versionID:FoodPreviewData.bread.id)],archived:true))
+        try! catalog.save(FoodPreset(name:"架空の確認食品",components:[.init(versionID:FoodPreviewData.bread.id)]))
+      }
       if ProcessInfo.processInfo.arguments.contains("--large-preset") {
         try! catalog.save(FoodPreset(name: "架空の5倍", components: [.init(versionID: FoodPreviewData.bread.id, factor: 5)]))
       }

@@ -16,8 +16,8 @@ function hubSchemaHeadersP7_(schema) {
 }
 function hubSchemaVersionsP7_() {
   const schemas=[HUB_BASE_SCHEMA_,HUB_P3_SCHEMA_,HUB_P4_SCHEMA_,HUB_P5_SCHEMA_,typeof HUB_HEALTH_SCHEMA_==='undefined'?HUB_SCHEMA_:HUB_HEALTH_SCHEMA_],counts=[16,18,23,32,36];
-  if(HUB_SCHEMA_.tables.WaterIntakes){schemas.push(HUB_SCHEMA_);counts.push(37)}
-  //;
+  if(HUB_SCHEMA_.tables.WaterIntakes){schemas.push(typeof HUB_HYDRATION_SCHEMA_==='undefined'?HUB_SCHEMA_:HUB_HYDRATION_SCHEMA_);counts.push(37)}
+  if(HUB_SCHEMA_.tables.CatalogEntries){schemas.push(HUB_SCHEMA_);counts.push(38)}
   schemas.forEach((s,i)=>ensure_(s.schema_version===1 && Object.keys(s.tables).length===counts[i],'SCHEMA_CONTRACT_MISMATCH'));
   // 実装の付加列がnullableでなくなった場合も、物理移行を始める前に拒否します。
   for(const source of schemas)for(const [name,spec]of Object.entries(source.tables)){

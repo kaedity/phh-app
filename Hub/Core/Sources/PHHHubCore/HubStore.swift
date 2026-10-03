@@ -74,10 +74,27 @@ import CoreData
     private func atomic(_ work: () throws -> Void) throws { do { try work(); try context.save() } catch { context.rollback(); throw error } }
     private func meta(_ key: String) throws -> String? { try find("Meta", key)?.value(forKey: "value") as? String }
     private func setMeta(_ key: String, _ value: String) throws { try object("Meta", key).setValue(value, forKey: "value") }
+    public var catalogEntryContract: Int { get throws { Int(try meta("catalog_entry_contract") ?? "0") ?? 0 } }
     public var hydrationContract: Int { get throws { Int(try meta("hydration_contract") ?? "0") ?? 0 } }
     public var healthContract: Int { get throws { Int(try meta("health_contract") ?? "0") ?? 0 } }
     public var planningContract: Int { get throws { Int(try meta("planning_contract") ?? "0") ?? 0 } }
     public var foodContract: Int { get throws { Int(try meta("food_contract") ?? "0") ?? 0 } }
+    // 保存成功の受領後、正本の再取得が遅れても端末表示と次の編集を保持します。
+    // Recordには混ぜず、同じ版以上の正本を取得したら一時コピーを除きます。
+    public func acknowledgedFoodMeals(confirmed:[FoodMeal]) throws -> [FoodMeal] {
+        let request=NSFetchRequest<NSManagedObject>(entityName:"Meta")
+        request.predicate=NSPredicate(format:"key BEGINSWITH %@","food_ack:")
+        var meals:[FoodMeal]=[],obsolete:[NSManagedObject]=[]
+        for row in try context.fetch(request) {
+            guard let key=row.value(forKey:"key") as? String,let text=row.value(forKey:"value") as? String else {throw HubError.invalidResponse}
+            let meal=try JSONDecoder().decode(FoodMeal.self,from:Data(text.utf8));try meal.validate()
+            guard key=="food_ack:"+meal.id else {throw HubError.invalidResponse}
+            if confirmed.contains(where:{$0.id==meal.id && $0.revision>=meal.revision}) {obsolete.append(row)}
+            else {meals.append(meal)}
+        }
+        if !obsolete.isEmpty {try atomic {for row in obsolete {context.delete(row)}}}
+        return meals.sorted {$0.id<$1.id}
+    }
     public var trainingContract: Int { get throws { Int(try meta("training_contract") ?? "0") ?? 0 } }
     public var cursor: Int { get throws { guard let value = try meta("cursor"), let n = Int(value), n >= 0 else { throw HubError.invalidResponse }; return n } }
     public var generation: Int { get throws { guard let value = try meta("generation"), let n = Int(value), n > 0 else { throw HubError.invalidResponse }; return n } }
@@ -136,7 +153,7 @@ import CoreData
     }
     public func enqueue(_ operation:HubOperation) throws { try enqueueBatch([operation]) }
     public func enqueueBatch(_ operations:[HubOperation]) throws {
-        for op in operations { if op.requiresHydrationContract { guard try hydrationContract==1 else {throw HubError.configuration} };if op.requiresFoodContract { guard try foodContract==1 else {throw HubError.configuration} };try op.validate() }
+        for op in operations { if op.requiresCatalogEntryContract {guard try catalogEntryContract==1 else {throw HubError.configuration}};if op.requiresHydrationContract { guard try hydrationContract==1 else {throw HubError.configuration} };if op.requiresFoodContract { guard try foodContract==1 else {throw HubError.configuration} };try op.validate() }
         try atomic { for op in operations { try insertQueued(op) } }
     }
     internal func cancelUnsentPlanning(_ id: String) throws {
@@ -182,6 +199,10 @@ import CoreData
         guard parts.count == 2, UUID(uuidString:String(parts[0])) != nil, ["0","1"].contains(String(parts[1])) else {throw HubError.invalidResponse}
         return String(parts[0]) == operationID ? parts[1] == "1" : fallback
     }
+    private func currentFoodMeal(_ id: String) throws -> FoodMeal? {
+        let confirmed = try FoodSnapshotReader.meals(["Meals", "MealItems", "IntakeNutrients"].flatMap { try rows(table: $0) })
+        return (confirmed + (try acknowledgedFoodMeals(confirmed: confirmed))).filter { $0.id == id }.max { $0.revision < $1.revision }
+    }
     public func undoFoodChange(_ change: FoodUndoChange, at: Date = .now, synthetic: Bool = true) throws {
         try change.validate(); guard change.available(at: at) else { throw FoodFailure.invalidValue }
         let outbox = try pending()
@@ -192,6 +213,7 @@ import CoreData
         let op = try FoodWireOperation(.init(id: change.undoID, expectedRevision: change.after.revision, meal: restoration), environment: hubEnvironment, synthetic: marker).hubOperation()
         if let original {
             guard original.operation.foodMeal == change.after,
+                !outbox.contains(where:{$0.operation.entity_id==change.after.id && $0.sequence>original.sequence}),
                 original.state == .queued || original.state == .authentication else { throw FoodFailure.pendingEdit }
             try atomic {
                 if original.attempts == 0 && original.state == .queued { if let row = try find("Outbox", original.id) { context.delete(row) } }
@@ -199,23 +221,24 @@ import CoreData
             }
         } else {
             guard outbox.allSatisfy({ $0.operation.entity_id != change.after.id }) else { throw FoodFailure.pendingEdit }
-            let mealRows = try ["Meals", "MealItems", "IntakeNutrients"].flatMap { try rows(table: $0) }
-            guard let current = try FoodSnapshotReader.meals(mealRows).first(where: { $0.id == change.after.id }) else { throw FoodFailure.missingReference }
+            guard let current = try currentFoodMeal(change.after.id) else { throw FoodFailure.missingReference }
             _ = try change.restoration(current: current)
             try enqueue(op)
         }
     }
     public func undoFoodAddition(_ operation:HubOperation) throws {
         try operation.validate();guard let meal=operation.foodMeal,operation.expected_revision==0 else {throw HubError.invalidOperation}
-        if let pending=try pending().first(where:{$0.id==operation.id}) {
-            guard pending.state == .queued || pending.state == .authentication else {throw FoodFailure.pendingEdit}
+        let outbox = try pending()
+        if let pending=outbox.first(where:{$0.id==operation.id}) {
+            guard !outbox.contains(where:{$0.operation.entity_id==meal.id && $0.sequence>pending.sequence && $0.operation.expected_revision>=meal.revision}),
+                pending.state == .queued || pending.state == .authentication else {throw FoodFailure.pendingEdit}
             try atomic {
                 if pending.attempts==0 && pending.state == .queued { if let row=try find("Outbox",pending.id) {context.delete(row)} }
                 else {try setMeta("food_undo:"+operation.id,"1")}
             }
         } else {
-            guard try pending().allSatisfy({$0.operation.entity_id != meal.id}) else {throw FoodFailure.pendingEdit}
-            let current=try FoodSnapshotReader.meals(rows()).first {$0.id==meal.id} ?? meal
+            guard outbox.allSatisfy({$0.operation.entity_id != meal.id}) else {throw FoodFailure.pendingEdit}
+            let current=try currentFoodMeal(meal.id) ?? meal
             let marker = try foodOriginalSynthetic(entityID:meal.id,operationID:operation.id,fallback:operation.synthetic)
             if !current.removed {try enqueue(FoodWireOperation(.init(expectedRevision:current.revision,meal:current.edited(remove:true)),environment:hubEnvironment,synthetic:marker).hubOperation())}
         }
@@ -224,7 +247,13 @@ import CoreData
         try receipt.validate(for:operation);guard receipt.status=="committed" else {throw HubError.invalidResponse}
         try atomic {
             guard let row=try find("Outbox",operation.id) else {return}
-            if operation.foodMeal != nil {try setMeta("food_origin:"+operation.entity_id,operation.id+"|"+(operation.synthetic ? "1":"0"))}
+            if let meal=operation.foodMeal {
+                try setMeta("food_origin:"+operation.entity_id,operation.id+"|"+(operation.synthetic ? "1":"0"))
+                let key="food_ack:"+meal.id
+                let previous=try meta(key).map {try JSONDecoder().decode(FoodMeal.self,from:Data($0.utf8))}
+                try previous?.validate()
+                if (previous?.revision ?? 0)<meal.revision {try setMeta(key,String(decoding:encoder.encode(meal),as:UTF8.self))}
+            }
             if let restored=try hydrationUndoRestoration(operation.id) {
                 guard restored.entity_id==operation.entity_id,restored.expected_revision==operation.hydration?.revision else {throw HubError.invalidOperation}
                 try insertQueued(restored)
@@ -252,6 +281,11 @@ import CoreData
         guard let pending = try pending().first(where: { $0.id == id }), [.conflict, .invalid].contains(pending.state) else { throw HubError.invalidOperation }
         try atomic { if let row = try find("Outbox", id) { context.delete(row) } }
     }
+    /// 要確認の操作を、同じ操作IDのまま送信待ちへ戻す（一時的な障害で止まった場合の「もう一度送る」）。
+    public func requeueRejected(_ id: String) throws {
+        guard let pending = try pending().first(where: { $0.id == id }), [.conflict, .invalid].contains(pending.state) else { throw HubError.invalidOperation }
+        try atomic { let row = try object("Outbox", id); row.setValue(PendingState.queued.rawValue, forKey: "state"); row.setValue(0.0, forKey: "retry"); row.setValue("もう一度送ります", forKey: "message") }
+    }
     public func resumeAuthentication() throws {
         try atomic {
             for item in try pending() where item.state == .authentication {
@@ -261,6 +295,7 @@ import CoreData
     }
     public func apply(_ page: Delta) throws {
         let start = try cursor
+        guard page.catalog_entry_contract == nil || page.catalog_entry_contract == 1 else {throw HubError.invalidResponse}
         guard page.hydration_contract == nil || page.hydration_contract == 1 else {throw HubError.invalidResponse}
         guard page.health_contract == nil || page.health_contract == 1 else { throw HubError.invalidResponse }
         guard page.planning_contract == nil || page.planning_contract == 1 else { throw HubError.invalidResponse }
@@ -274,6 +309,7 @@ import CoreData
             guard c.change_number == start + i + 1, c.entity_id == row.entityID, c.revision == row.revision, c.indexed_revision > 0, c.indexed_revision <= c.revision,
                   c.removed == !row.active, c.local_date == nil || Schema.validDate(c.local_date!) else { throw HubError.invalidResponse }
             try Schema.validate(row)
+            if row.table=="CatalogEntries" {guard page.catalog_entry_contract==1,c.local_date==nil else {throw HubError.invalidResponse};_ = try FoodCatalogEntryRows.entries([row])}
             if row.table=="WaterIntakes" {guard page.hydration_contract==1,c.local_date==row.values["local_date"]?.text else {throw HubError.invalidResponse};_ = try HydrationRows.records([row])}
             if PlanningRows.tables.contains(row.table) { guard page.planning_contract == 1 else { throw HubError.invalidResponse } }
             if Set(item.record.keys) == Set(Schema.foodP4.tables[row.table]?.columns.map(\.name) ?? []),
@@ -289,7 +325,7 @@ import CoreData
                 if old > c.revision { continue }
                 row.setValue(c.table_name, forKey: "table"); row.setValue(c.local_date ?? "", forKey: "date"); row.setValue(payload, forKey: "payload"); row.setValue(c.revision, forKey: "revision")
             }
-            try setMeta("hydration_contract",String(page.hydration_contract ?? 0));try setMeta("health_contract", String(page.health_contract ?? 0)); try setMeta("planning_contract", String(page.planning_contract ?? 0)); try setMeta("cursor", String(page.next_cursor)); try setMeta("training_contract",String(page.training_contract ?? 0)); try setMeta("food_contract",String(page.food_contract ?? 0))
+            try setMeta("catalog_entry_contract",String(page.catalog_entry_contract ?? 0));try setMeta("hydration_contract",String(page.hydration_contract ?? 0));try setMeta("health_contract", String(page.health_contract ?? 0)); try setMeta("planning_contract", String(page.planning_contract ?? 0)); try setMeta("cursor", String(page.next_cursor)); try setMeta("training_contract",String(page.training_contract ?? 0)); try setMeta("food_contract",String(page.food_contract ?? 0))
         }
     }
 }

@@ -78,6 +78,18 @@ struct ReferenceFoodTests {
     #expect(all.foods.count == 30); #expect(all.total == 2538); #expect(all.omitted == 2508)
   }
 
+  @Test func familiarBoiledEggNameFindsOfficialWholeEggWithoutChangingValues() throws {
+    let database = try sourceDatabase()
+    for query in ["ゆで卵", "ゆでたまご", "茹で卵", "ゆで 卵"] {
+      let result = database.search(query: query)
+      #expect(result.foods.map(\.code) == ["12005"])
+      #expect(result.foods.first?.name == "鶏卵　全卵　ゆで")
+      #expect(result.foods.first?.kcal == "134")
+    }
+    #expect(database.search(query: "ゆで卵", groupCode: "07").total == 0)
+    #expect(database.search(query: "12011").foods.first?.name == "鶏卵　卵黄　ゆで")
+  }
+
   @Test func confirmationCreatesImmutable100GramVersionAndScalesPresetOnly() throws {
     let food = try ReferenceFood(
       code: "01001", groupCode: "01", group: "架空群", name: "架空食品　ゆで",

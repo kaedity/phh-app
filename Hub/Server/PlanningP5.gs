@@ -78,7 +78,7 @@ function hubP5ValidateModel_(key,v,id,expected) {
 function hubP5RowPlan_(op,now,layout) {
   const choice=hubP5Actions_(layout)[op.action];ensure_(choice,'INVALID_ACTION');
   hubKeys_(op,['schema_version','environment','operation_id','action','entity_id','expected_revision','approval_state','synthetic','payload']);
-  ensure_(op.schema_version===1 && ['PHH_TEST','PHH_PRODUCTION'].includes(op.environment) && op.synthetic===true && op.approval_state==='confirmed' && hubIsId_(op.operation_id) && hubIsId_(op.entity_id) && Number.isSafeInteger(op.expected_revision) && op.expected_revision>=0 && op.expected_revision<9007199254740991,'INVALID_OPERATION');
+  ensure_(op.schema_version===1 && ['PHH_TEST','PHH_PRODUCTION'].includes(op.environment) && typeof op.synthetic==='boolean' && op.approval_state==='confirmed' && hubIsId_(op.operation_id) && hubIsId_(op.entity_id) && Number.isSafeInteger(op.expected_revision) && op.expected_revision>=0 && op.expected_revision<9007199254740991,'INVALID_OPERATION');
   const {table,spec}=choice;hubKeys_(op.payload,[spec.key]);const v=op.payload[spec.key];
   const allowed=Array.from(new Set(spec.fields.map(f=>f.path.split('.')[0]).concat(spec.children.map(c=>c.path),spec.model_id?['id']:[])));
   hubKeys_(v,allowed);hubP5ValidateModel_(spec.key,v,op.entity_id,op.expected_revision);

@@ -3,9 +3,11 @@ import Foundation
 public struct FoodScreenSnapshot: Equatable, Sendable {
   public var catalog:FoodCatalog,confirmed:[FoodMeal],pending:[FoodPendingOperation]
   public var catalogPendingCount:Int
-  public init(catalog:FoodCatalog,confirmed:[FoodMeal],pending:[FoodPendingOperation],catalogPendingCount:Int=0) {self.catalog=catalog;self.confirmed=confirmed;self.pending=pending;self.catalogPendingCount=catalogPendingCount}
+  public var acknowledged:[FoodMeal]
+  public init(catalog:FoodCatalog,confirmed:[FoodMeal],pending:[FoodPendingOperation],catalogPendingCount:Int=0,acknowledged:[FoodMeal]=[]) {self.catalog=catalog;self.confirmed=confirmed;self.pending=pending;self.catalogPendingCount=catalogPendingCount;self.acknowledged=acknowledged}
 }
 @MainActor public protocol FoodEditingStore: AnyObject {
+  var permitsQueuedEdits:Bool {get}
   func snapshot() throws -> FoodScreenSnapshot
   @discardableResult func addPreset(_ id:String,date:String,slot:String) throws -> String
   @discardableResult func enqueue(_ meal:FoodMeal,operationID:String) throws -> String
@@ -15,6 +17,7 @@ public struct FoodScreenSnapshot: Equatable, Sendable {
   func undoChange(_ change: FoodUndoChange, at: Date) throws
 }
 public extension FoodEditingStore {
+  var permitsQueuedEdits:Bool {false}
   func undoChange(_ change: FoodUndoChange, at: Date = .now) throws {
     guard change.before == nil, change.available(at: at) else { throw FoodFailure.invalidValue }
     try undoAddition(change.operationID)
@@ -25,16 +28,18 @@ extension FoodLocalStore: FoodEditingStore {
 }
 /// 共通CoreData/Outboxを唯一の端末正本として使う製品接続。プレビューJSONとは分離。
 @MainActor public final class FoodHubStore: FoodEditingStore {
+  public var permitsQueuedEdits:Bool {true}
   private let hub:HubStore
   private let synthetic:Bool
   private var additions:[String:HubOperation]=[:]
   public init(hub:HubStore,synthetic:Bool=true) {self.hub=hub;self.synthetic=synthetic}
   public func snapshot() throws -> FoodScreenSnapshot {
-    let rows=try ["FoodVersions","FoodNutrients","Categories","Presets","PresetItems","Meals","MealItems","IntakeNutrients"].flatMap {try hub.rows(table:$0)},outbox=try hub.pending()
+    let rows=try ["FoodVersions","FoodNutrients","Categories","Presets","PresetItems","Meals","MealItems","IntakeNutrients","CatalogEntries"].flatMap {try hub.rows(table:$0)},outbox=try hub.pending()
     var catalog=try FoodCatalogReader.catalog(rows)
     // 未送信カタログも同じOutbox順で投影し、関連操作を同じID/版で後続へ渡します。
     for queued in outbox {
       let op=queued.operation
+      if let entry=op.foodCatalogEntry {try catalog.save(entry)}
       if let v=op.foodVersion {try catalog.add(v)}
       if let c=op.foodCategory {try catalog.save(c)}
       if let p=op.foodPreset {
@@ -50,11 +55,22 @@ extension FoodLocalStore: FoodEditingStore {
       if entry.state == .conflict || entry.state == .invalid {op.state = .needsReview}
       return op
     }
-    return .init(catalog:catalog,confirmed:meals,pending:pending,catalogPendingCount:outbox.filter {$0.operation.requiresFoodContract && $0.operation.foodMeal == nil}.count)
+    return .init(catalog:catalog,confirmed:meals,pending:pending,catalogPendingCount:outbox.filter {$0.operation.requiresFoodContract && $0.operation.foodMeal == nil}.count,acknowledged:try hub.acknowledgedFoodMeals(confirmed:meals))
   }
   @discardableResult public func enqueue(_ meal:FoodMeal,operationID:String) throws -> String {
-    guard try hub.pending().allSatisfy({$0.operation.entity_id != meal.id || $0.id==operationID}) else {throw FoodFailure.pendingEdit}
     let wire=try FoodWireOperation(.init(id:operationID,expectedRevision:meal.revision-1,meal:meal),environment:hubEnvironment,synthetic:synthetic),op=try wire.hubOperation()
+    let queued=try hub.pending()
+    // 再送は固定した元の内容で照合し、新しい変更には別の操作IDを使います。
+    if queued.contains(where:{$0.id==operationID}) {try hub.enqueue(op);return op.id}
+    guard queued.allSatisfy({$0.operation.entity_id != meal.id || $0.operation.foodMeal != nil}) else {throw FoodFailure.pendingEdit}
+    let state=try snapshot()
+    var current=(state.confirmed+state.acknowledged).filter {$0.id==meal.id}.max {$0.revision<$1.revision}
+    for previous in state.pending where previous.meal.id==meal.id {
+      guard previous.state != .needsReview,!previous.undoRequested,
+        previous.expectedRevision==(current?.revision ?? 0) else {throw FoodFailure.pendingEdit}
+      current=previous.meal
+    }
+    guard meal.revision==(current?.revision ?? 0)+1 else {throw FoodFailure.revisionConflict}
     try hub.enqueue(op);if meal.revision==1 {additions[op.id]=op};return op.id
   }
   @discardableResult public func addPreset(_ id:String,date:String,slot:String) throws -> String {
@@ -64,7 +80,8 @@ extension FoodLocalStore: FoodEditingStore {
     return try enqueue(meal,operationID:UUID().uuidString)
   }
   public func edit(_ id:String,factor:Double=1,date:String?=nil,slot:String?=nil,remove:Bool=false) throws {
-    guard let current=try snapshot().confirmed.first(where:{$0.id==id && !$0.removed}) else {throw FoodFailure.missingReference}
+    let state=try snapshot()
+    guard let current=(state.confirmed+state.acknowledged+state.pending.map(\.meal)).filter({$0.id==id}).max(by:{$0.revision<$1.revision}),!current.removed else {throw FoodFailure.missingReference}
     try enqueue(current.edited(factor:factor,date:date,slot:slot,remove:remove),operationID:UUID().uuidString)
   }
   public func undoAddition(_ operationID:String) throws {
@@ -83,6 +100,11 @@ extension FoodLocalStore: FoodEditingStore {
     for p in catalog.presets where old.presets.first(where:{$0.id==p.id}) != p {
       guard p.revision==(old.presets.first(where:{$0.id==p.id})?.revision ?? 0)+1 else {throw FoodFailure.revisionConflict}
       ops.append(.init(foodPreset:p))
+    }
+    guard old.entries.allSatisfy({e in catalog.entries.contains {$0.id==e.id}}) else {throw FoodFailure.invalidValue}
+    for entry in catalog.entries where old.entries.first(where:{$0.id==entry.id}) != entry {
+      guard entry.revision==(old.entries.first(where:{$0.id==entry.id})?.revision ?? 0)+1 else {throw FoodFailure.revisionConflict}
+      ops.append(.init(foodCatalogEntry:entry))
     }
     for i in ops.indices {ops[i].synthetic=synthetic}
     try hub.enqueueBatch(ops)

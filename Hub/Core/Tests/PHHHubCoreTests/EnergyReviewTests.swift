@@ -77,7 +77,7 @@ import Testing
         }
     }
 
-    @Test func incompleteChangedUnknownAndPendingDaysPreventBothCalculations() throws {
+    @Test func incompleteChangedUnknownAndPendingDaysPreventMaintenanceButNotTheWeightTrend() throws {
         let complete = try intakes(14), body = try weights(14)
         var changed = complete[7].day
         try changed.foodChanged(to: 1)
@@ -90,8 +90,9 @@ import Testing
         for (variant, reason) in variants {
             var food = complete; food[7] = variant
             let report = try EnergyReview.evaluate(asOf: date(15), goal: goal(), intakeDays: food, weights: body)
-            #expect(report.proposal == nil)
-            #expect(report.initialTrend == nil)
+            // 食事の記録が欠けた日は実測の維持量を止めるが、2週間の体重の増減は体重だけで判断する（DESIGN 6章、10/4）。
+            #expect(report.proposal?.kind != .measuredTarget)
+            #expect(report.initialTrend != nil)
             #expect(report.maintenance == nil)
             #expect(report.excludedDays.first { $0.date == date(8) }?.reasons.contains(reason) == true)
             #expect(!report.eligibleDates.contains(date(8)))
@@ -139,7 +140,7 @@ import Testing
         #expect(report.reasons.contains { $0.contains("0以下") })
         var missing = try intakes(14); missing.remove(at: 5)
         let short = try EnergyReview.evaluate(asOf: date(15), goal: goal(), intakeDays: missing, weights: weights(14))
-        #expect(short.proposal == nil)
+        #expect(short.proposal?.kind != .measuredTarget)
         #expect(short.excludedDays.first { $0.date == date(6) }?.reasons.contains(.incomplete) == true)
     }
 

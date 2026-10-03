@@ -148,18 +148,25 @@ public enum EnergyReview {
             else { excluded.append(.init(date: date, reasons: missing)) }
         }
         let eligibleSet = Set(eligible), last14 = Array(dates.suffix(14))
+        // 2週間ごとの増減（DESIGN 6章）は体重だけで判断する。前後7日それぞれ5日以上の朝体重があればよい（10/4）。
+        // 実測の維持量は摂取も使うので、これまでどおり21日すべての記録完了を求める。
+        let morningWeights = Set(dates.filter { weightDays[$0]?.morningMeasurementConfirmed == true })
         var reasons: [String] = []
-        func trend(for window: [String]) throws -> EnergyReviewTrend? {
-            guard window.allSatisfy(eligibleSet.contains) else { return nil }
-            let values = window.compactMap { weightDays[$0] }
+        func trend(for window: [String], weightOnly: Bool = false) throws -> EnergyReviewTrend? {
+            if weightOnly {
+                guard window.count == 14, window.prefix(7).filter(morningWeights.contains).count >= 5,
+                      window.suffix(7).filter(morningWeights.contains).count >= 5 else { return nil }
+            } else { guard window.allSatisfy(eligibleSet.contains) else { return nil } }
+            let values = window.filter { !weightOnly || morningWeights.contains($0) }.compactMap { weightDays[$0] }
             guard Set(values.map(\.sourceID)).count == 1 else {
                 reasons.append("体重の取得元が途中で変わっています。同じ取得元の朝測定を選んでください。")
                 return nil
             }
             func average(_ part: [String]) -> EnergyReviewWeightAverage {
-                .init(period: .init(part), representativeDate: part[3],
-                      kilograms: part.reduce(0) { $0 + weightDays[$1]!.kilograms } / 7,
-                      sampleIDs: part.map { weightDays[$0]!.sampleID })
+                let measured = weightOnly ? part.filter(morningWeights.contains) : part
+                return .init(period: .init(part), representativeDate: part[3],
+                      kilograms: measured.reduce(0) { $0 + weightDays[$1]!.kilograms } / Double(measured.count),
+                      sampleIDs: measured.map { weightDays[$0]!.sampleID })
             }
             let before = average(Array(window.prefix(7))), after = average(Array(window.suffix(7)))
             let days = try distance(before.representativeDate, after.representativeDate)
@@ -169,7 +176,7 @@ public enum EnergyReview {
             return .init(before: before, after: after, elapsedDays: days, changeKilograms: change,
                          weeklyChangeKilograms: weekly, weeklyChangePercent: weekly / before.kilograms * 100)
         }
-        let initialTrend = try trend(for: last14)
+        let initialTrend = try trend(for: last14, weightOnly: true)
         let maintenanceTrend = try trend(for: dates)
         var maintenance: EnergyReviewMaintenance?
         if let trend = maintenanceTrend {
@@ -183,7 +190,7 @@ public enum EnergyReview {
                                     intakeKcalByDate: Dictionary(uniqueKeysWithValues: referenceDates.map { ($0, intakes[$0]!.kcal!) }))
             } else { reasons.append("維持量の計算結果が0以下です。摂取量と体重の採用値を確認してください。") }
         } else { reasons.append("実測の維持量には、連続21日分の記録完了・確定摂取量・同じ取得元の朝体重が必要です。欠けた日は補完しません。") }
-        if initialTrend == nil { reasons.append("初期目標の増減には、直近14日分の記録完了・確定摂取量・朝体重が必要です。") }
+        if initialTrend == nil { reasons.append("初期目標の増減には、直近14日の前半・後半それぞれ5日以上の朝体重（同じ取得元）が必要です。") }
 
         let nextWeekly = try lastReviewedOn.map { try shifted($0, by: 7) } ?? asOf
         let weeklyDue = asOf >= nextWeekly

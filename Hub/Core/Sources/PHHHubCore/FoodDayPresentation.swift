@@ -12,17 +12,21 @@ public struct FoodDayPresentation: Equatable, Sendable {
     public init(date: String, snapshot: FoodScreenSnapshot) throws {
         try FoodRules.date(date)
         for meal in snapshot.confirmed { try meal.validate() }
+        for meal in snapshot.acknowledged { try meal.validate() }
         for operation in snapshot.pending { try operation.validate() }
         guard Set(snapshot.confirmed.map(\.id)).count == snapshot.confirmed.count,
               Set(snapshot.pending.map(\.id)).count == snapshot.pending.count,
-              Set(snapshot.pending.map { $0.meal.id }).count == snapshot.pending.count
+              Set(snapshot.acknowledged.map(\.id)).count == snapshot.acknowledged.count
         else { throw FoodFailure.duplicateID }
         self.date = date
         confirmedTotal = .day(date, meals: snapshot.confirmed)
         var projected = Dictionary(uniqueKeysWithValues: snapshot.confirmed.map { ($0.id, $0) })
+        for accepted in snapshot.acknowledged where accepted.revision>(projected[accepted.id]?.revision ?? 0) {
+            projected[accepted.id]=accepted
+        }
         var reviews: [String] = []
         pending = snapshot.pending.filter { operation in
-            operation.meal.date == date || snapshot.confirmed.contains { $0.id == operation.meal.id && $0.date == date }
+            operation.meal.date == date || (snapshot.confirmed+snapshot.acknowledged).contains { $0.id == operation.meal.id && $0.date == date }
         }
         for operation in snapshot.pending {
             let previous = projected[operation.meal.id]

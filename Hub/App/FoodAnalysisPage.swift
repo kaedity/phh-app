@@ -10,6 +10,7 @@ struct FoodAnalysisPage: View {
   @State private var images: [Data] = []
   @State private var selectedPhotos: [PhotosPickerItem] = []
   @State private var draft: FoodDraft?
+  @State private var confirmClose = false
   @State private var busy = false
   @State private var saving = false
   @State private var error = ""
@@ -34,6 +35,15 @@ struct FoodAnalysisPage: View {
   }
   var body: some View {
     Form {
+      // どの日・どの区分に記録されるかを先に見せる（食事画面で選んだ日付と区分）。
+      Section { LabeledContent("記録先", value: "\(mockDay(date)) · \(slot)") }
+      if analyze == nil {
+        Section {
+          Label("解析は準備中です", systemImage:"info.circle").font(.headline)
+          Text("写真・文章の解析は現在利用できません。選んだ写真と補足は、閉じると消えます。食事の記録にはまだ追加されません。")
+            .font(.subheadline).foregroundStyle(.secondary)
+        }.accessibilityIdentifier("food-analysis-unavailable")
+      }
       inputSection
       Section {
         Button("食べる前と後の2枚で記録") { plate = true }
@@ -43,13 +53,15 @@ struct FoodAnalysisPage: View {
       if !error.isEmpty { Section { Text(error).foregroundStyle(.red) } }
     }.navigationTitle("食事を確認").navigationBarTitleDisplayMode(.inline).toolbar {
       ToolbarItem(placement: .cancellationAction) {
-        Button("閉じる") {
-          task?.cancel()
-          releasePhoto()
-          dismiss()
-        }
+        // 解析結果がある間は、閉じる前に破棄してよいか確かめる。スワイプでも閉じない（10/4）。
+        Button("閉じる") { if draft != nil || busy { confirmClose = true } else { closeSheet() } }
       }
-    }.onChange(of: selectedPhotos) { _, photos in
+    }.interactiveDismissDisabled(draft != nil || busy)
+    .confirmationDialog("解析結果を破棄して閉じますか？", isPresented: $confirmClose, titleVisibility: .visible) {
+      Button("破棄して閉じる", role: .destructive) { closeSheet() }
+      Button("続ける", role: .cancel) {}
+    } message: { Text("まだ記録されていません。閉じると推定と手直しが消えます。") }
+    .onChange(of: selectedPhotos) { _, photos in
       guard !photos.isEmpty else { return }
       photoTask?.cancel()
       photoTask = Task {
@@ -60,7 +72,7 @@ struct FoodAnalysisPage: View {
                   let jpeg=ui.jpegData(compressionQuality: 0.7) else { throw FoodFailure.invalidValue }
             try Task.checkCancellation(); next.append(jpeg)
           }
-          images=try FoodPhotoBatch(next).jpegs; error=""
+          images=try FoodPhotoBatch(images+next).jpegs; error=""  // 撮った写真と同じく追加する（置き換えない）
         } catch is CancellationError {} catch { self.error="写真は4枚・合計20MB以内で選んでください。読み込めない写真は別の写真でお試しください。" }
         selectedPhotos=[]
       }
@@ -194,6 +206,7 @@ struct FoodAnalysisPage: View {
         }
   }
 
+  private func closeSheet() { task?.cancel(); releasePhoto(); dismiss() }
   private func releasePhoto() {
     photoTask?.cancel()
     photoTask = nil
@@ -251,6 +264,8 @@ struct FoodDraftItemEditor: View {
   @State private var fat: String
   @State private var carbs: String
   @State private var error = ""
+  // 栄養の欄を本人が直すまでは、量を変えるたびに元の推定から比例で計算し直す（10/4：量だけ直すと栄養が200g分のまま残っていた）。
+  @State private var nutrientsEdited = false
   init(item: FoodItemSnapshot, save: @escaping (FoodItemSnapshot) -> Void) {
     self.item = item
     self.save = save
@@ -262,28 +277,35 @@ struct FoodDraftItemEditor: View {
     _fat = State(initialValue: item.nutrients.fat.map(String.init(describing:)) ?? "")
     _carbs = State(initialValue: item.nutrients.carbohydrate.map(String.init(describing:)) ?? "")
   }
+  private func edited(_ field: Binding<String>) -> Binding<String> {
+    Binding(get: { field.wrappedValue }, set: { if $0 != field.wrappedValue { nutrientsEdited = true }; field.wrappedValue = $0 })
+  }
+  private func rescale(showError: Bool) {
+    do {
+      guard let q = Double(quantity), q > 0, item.quantity > 0 else { throw FoodFailure.invalidValue }
+      let scaled = try item.scaled(q / item.quantity)
+      kcal = scaled.nutrients.kcal.map(String.init(describing:)) ?? ""
+      protein = scaled.nutrients.protein.map(String.init(describing:)) ?? ""
+      fat = scaled.nutrients.fat.map(String.init(describing:)) ?? ""
+      carbs = scaled.nutrients.carbohydrate.map(String.init(describing:)) ?? ""
+      error = ""
+    } catch { if showError { self.error = error.localizedDescription } }
+  }
   var body: some View {
     Form {
       Section("推定を修正") {
         LabeledContent("食品名") { TextField("食品名", text: $name) }
         LabeledContent("量") { TextField("量", text: $quantity).motionFieldError(error).keyboardType(.decimalPad) }
+          .onChange(of: quantity) { _, _ in if !nutrientsEdited { rescale(showError: false) } }
         LabeledContent("単位") { TextField("単位", text: $unit) }
-        Button("量に合わせて栄養を計算") {
-          do {
-            guard let q = Double(quantity) else { throw FoodFailure.invalidValue }
-            let scaled = try item.scaled(q / item.quantity)
-            kcal = scaled.nutrients.kcal.map(String.init(describing:)) ?? ""
-            protein = scaled.nutrients.protein.map(String.init(describing:)) ?? ""
-            fat = scaled.nutrients.fat.map(String.init(describing:)) ?? ""
-            carbs = scaled.nutrients.carbohydrate.map(String.init(describing:)) ?? ""
-          } catch { self.error = error.localizedDescription }
-        }
+        Button(nutrientsEdited ? "元の推定から計算し直す" : "量に合わせて自動で計算しています") { nutrientsEdited = false; rescale(showError: true) }
+          .disabled(!nutrientsEdited)
       }
       Section("表示量の栄養 · 空欄は未設定") {
-        LabeledContent("kcal") { TextField("kcal", text: $kcal).keyboardType(.decimalPad) }
-        LabeledContent("P（g）") { TextField("P（g）", text: $protein).keyboardType(.decimalPad) }
-        LabeledContent("F（g）") { TextField("F（g）", text: $fat).keyboardType(.decimalPad) }
-        LabeledContent("C（g）") { TextField("C（g）", text: $carbs).keyboardType(.decimalPad) }
+        LabeledContent("kcal") { TextField("kcal", text: edited($kcal)).keyboardType(.decimalPad) }
+        LabeledContent("P（g）") { TextField("P（g）", text: edited($protein)).keyboardType(.decimalPad) }
+        LabeledContent("F（g）") { TextField("F（g）", text: edited($fat)).keyboardType(.decimalPad) }
+        LabeledContent("C（g）") { TextField("C（g）", text: edited($carbs)).keyboardType(.decimalPad) }
       }
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
     }.navigationTitle("食品を修正").navigationBarTitleDisplayMode(.inline).toolbar {

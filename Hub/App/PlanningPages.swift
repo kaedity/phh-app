@@ -204,6 +204,13 @@ struct GoalRuleEditor: View {
       } label: { MotionSaveLabel(title: "目標を端末へ保存", saved: saved) }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: .systemBackground)).accessibilityLabel(saved ? "目標を保存しました" : "目標を端末へ保存")
       if !error.isEmpty { Text(error) }
     }.navigationTitle("固定目標の設定")
+    // 今の目標（期・kcal・PFC）を入れた状態で開く。空欄から始めると、増量期を見落として維持期で保存しやすいため（10/4）。
+    .onAppear {
+      guard kcal.isEmpty, protein.isEmpty, fat.isEmpty, carbohydrate.isEmpty, let goal = try? model.goal(FoodDates.text(date)) else { return }
+      phase = goal.phase
+      let text: (Double?) -> String = { $0.map { $0.formatted(.number.grouping(.never).precision(.fractionLength(0...1))) } ?? "" }
+      kcal = text(goal.base.kcal); protein = text(goal.base.protein); fat = text(goal.base.fat); carbohydrate = text(goal.base.carbohydrate)
+    }
   }
 }
 private struct ManualGoalEditor: View {
@@ -235,7 +242,7 @@ struct SupplementPage: View {
   @State private var editing: SupplementDay?
   var body: some View {
     Page(title: "サプリの自動計上") {
-      Text(date).foregroundStyle(.secondary)
+      Text(mockDay(date)).foregroundStyle(.secondary)
       Text("予定の設定・変更は会話で行います。毎日の服用確認は不要です。").font(.subheadline)
       if let ledger = try? model.supplements() {
         if ledger.plans.isEmpty { Card { Text("予定はまだありません"); Text("商品名・日量・成分・開始日を会話から登録します。").font(.caption).foregroundStyle(.secondary) } }
@@ -280,7 +287,7 @@ private struct SupplementAmountEditor: View {
   var body: some View {
     NavigationStack {
       Form {
-        Text("\(day.date) · \(day.productName)")
+        Text("\(mockDay(day.date)) · \(day.productName)")
         TextField(day.unit, text: $amount).keyboardType(.decimalPad)
         Button("この日だけ変更を保存") {
           do { guard let value = try planningNumber(amount) else { throw SupplementFailure.invalidValue }

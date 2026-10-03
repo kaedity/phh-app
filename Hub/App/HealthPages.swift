@@ -2,6 +2,8 @@ import SwiftUI
 import Charts
 import PHHHubCore
 
+/// 体重は桁をそろえて小数1桁で表示する（68 → 68.0）。
+private func weightText(_ value: Double?) -> String { value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—" }
 private func healthNumber(_ value: Double?, digits: Int = 1) -> String { value.map { $0.formatted(.number.precision(.fractionLength(0...digits))) } ?? "—" }
 func sleepDuration(_ seconds: Double?) -> String {
     guard let seconds else { return "—" }; let minutes = Int(seconds / 60)
@@ -66,26 +68,50 @@ struct HealthWeightPage: View {
             last = date; return WeightChartPoint(day: day, date: date, segment: segment)
         }
     }
+    private var averagePoints: [(date: String, value: Double)] {
+        let shown = Set(points.map(\.day.date)); return HealthPresentation.weightAverages(screen.weightDays).filter { shown.contains($0.date) }
+    }
+    // 増量の判断は7日平均で行う（DESIGN 6章）。目安は週に体重の+0.25〜0.5%。
+    @ViewBuilder private var weightTrendLine: some View {
+        if let trend = HealthPresentation.weightTrend(screen.weightDays, end: screen.date) {
+            HStack(spacing: 6) {
+                Text("7日平均 \(weightText(trend.average)) kg").font(.subheadline.weight(.semibold))
+                if let change = trend.change, let pct = trend.percentPerWeek {
+                    Text("先週比 \(change >= 0 ? "+" : "")\(change.formatted(.number.precision(.fractionLength(2)))) kg（\(pct >= 0 ? "+" : "")\(pct.formatted(.number.precision(.fractionLength(1))))%/週）").font(.subheadline)
+                        .foregroundStyle(pct >= 0.25 && pct <= 0.5 ? pine : .secondary)
+                }
+            }.padding(.top, 4)
+            Text(trend.change == nil ? "先週の測定が5日未満のため、変化はまだ出せません" : "増量の目安：週に+0.25〜0.5%（7日平均の点線）").font(.caption2).foregroundStyle(.secondary)
+        } else {
+            Text("7日平均は、7日のうち5日以上測ると表示します").font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
+        }
+    }
     var body: some View {
         Page(title: "体重") {
             MotionSegments(title: "表示期間", selection: $period, options: [(7,"7日"),(30,"30日"),(0,"全期間")])
             VStack(spacing: 4) {
-                MockFigure(value: healthNumber(screen.latestWeight?.value), unit: "kg", size: 52)
+                MockFigure(value: weightText(screen.latestWeight?.value), unit: "kg", size: 52)
                 if let sample = screen.latestWeight { Text(mockDayTime(sample.start)).font(.subheadline).foregroundStyle(.secondary); Text("\(sample.source.name)経由").font(.caption).foregroundStyle(pine) }
                 if screen.readState(.bodyMass) != .available { Text(stateTitle(screen.readState(.bodyMass))).font(.caption).foregroundStyle(.secondary) }
+                weightTrendLine
             }.frame(maxWidth: .infinity)
             Card {
                 if points.isEmpty { ContentUnavailableView("測定値がありません", systemImage: "scalemass", description: Text("欠測は0 kgとして扱いません。")) }
                 else {
-                    Chart(points) { point in
+                    Chart {
+                        ForEach(points) { point in
                         RuleMark(x: .value("日付", point.date), yStart: .value("最小", point.day.minimum), yEnd: .value("最大", point.day.maximum)).foregroundStyle(pine.opacity(0.3))
-                        LineMark(x: .value("日付", point.date), y: .value("代表値", point.day.value), series: .value("連続した日", point.segment)).foregroundStyle(pine)
+                        LineMark(x: .value("日付", point.date), y: .value("代表値", point.day.value), series: .value("系列", "測定\(point.segment)")).foregroundStyle(pine)
                         PointMark(x: .value("日付", point.date), y: .value("代表値", point.day.value)).foregroundStyle(pine).symbolSize(28)
+                        }
+                        ForEach(averagePoints, id: \.date) { avg in
+                            LineMark(x: .value("日付", FoodDates.date(avg.date)), y: .value("7日平均", avg.value), series: .value("系列", "7日平均")).foregroundStyle(pfcFat.opacity(0.85)).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                        }
                     }.chartYScale(domain: .automatic(includesZero: false)).chartYAxisLabel("kg").chartXSelection(value: $selectedDate).dynamicTypeSize(...DynamicTypeSize.xxxLarge).frame(height: 200).modifier(MotionChartReveal(key: String(period)))
                     if let selectedDate, let nearest = points.min(by: { abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate)) }) {
-                        Text("\(mockDay(nearest.day.date)) · \(healthNumber(nearest.day.value)) kg · 範囲 \(healthNumber(nearest.day.minimum))–\(healthNumber(nearest.day.maximum)) kg").font(.caption)
+                        Text("\(mockDay(nearest.day.date)) · \(weightText(nearest.day.value)) kg · 範囲 \(weightText(nearest.day.minimum))–\(weightText(nearest.day.maximum)) kg").font(.caption)
                     }
-                    HStack(spacing: 4) { Text("点はその日の最後の測定です").font(.caption).foregroundStyle(.secondary); MotionInfo(text: "縦線はその日に読み込んだ測定の範囲です。測っていない日は線をつなぎません。") }
+                    HStack(spacing: 4) { Text("点はその日の朝いちばんの測定です").font(.caption).foregroundStyle(.secondary); MotionInfo(text: "縦線はその日に読み込んだ測定の範囲です。測っていない日は線をつなぎません。") }
                 }
             }
             HStack { Text("測定履歴").font(.headline); Spacer()
@@ -99,11 +125,11 @@ struct HealthWeightPage: View {
                             HStack(spacing: 10) {
                                 Text(mockDayTime(sample.start)).font(.body.weight(.medium)).fixedSize()
                                 Spacer(minLength: 8)
-                                Text("\(healthNumber(sample.value)) kg").font(.body.weight(.semibold)).fixedSize()
+                                Text("\(weightText(sample.value)) kg").font(.body.weight(.semibold)).fixedSize()
                             }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(mockDayTime(sample.start)).font(.body.weight(.medium))
-                                Text("\(healthNumber(sample.value)) kg").font(.body.weight(.semibold)).fixedSize(horizontal: true, vertical: false)
+                                Text("\(weightText(sample.value)) kg").font(.body.weight(.semibold)).fixedSize(horizontal: true, vertical: false)
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }.padding(.horizontal, 16).padding(.vertical, 13)
                         if index < samples.count-1 { Divider().padding(.leading, 16) }
@@ -145,7 +171,7 @@ struct HealthDetailPage: View {
                 }
             }
             Card {
-                Text("\(screen.date)の活動").font(.headline)
+                Text("\(mockDay(screen.date))の活動").font(.headline)
                 ForEach([HealthMetric.stepCount, .activeEnergyBurned, .basalEnergyBurned], id: \.self) { metric in
                     let statistic = screen.dailyStatistics[metric]
                     VStack(alignment: .leading, spacing: 5) {
@@ -160,7 +186,7 @@ struct HealthDetailPage: View {
                 Text("睡眠").font(.headline)
                 if !screen.sleepSources.isEmpty { Picker("睡眠の情報源", selection: Binding(get: { screen.selectedSleepSource ?? "" }, set: { screen.selectedSleepSource = $0 })) { ForEach(screen.sleepSources, id: \.id) { Text($0.name).tag($0.id) } }.pickerStyle(.menu) }
                 Text(sleepDuration(screen.currentSleep?.seconds)).font(.title2.weight(.semibold))
-                Text("区間の終了日：\(screen.date) · 主睡眠/昼寝は未分類").font(.caption).foregroundStyle(.secondary)
+                Text("区間の終了日：\(mockDay(screen.date))").font(.caption).foregroundStyle(.secondary)
                 Text(stateTitle(screen.readState(.sleepAnalysis))).font(.caption).foregroundStyle(.secondary)
                 if screen.hasMoreSleep { Text("表示は最新500区間です。前の区間は未読込です。").font(.caption).foregroundStyle(.secondary) }
                 if let window = screen.currentSleepWindow { Text("採用した元区間：\(healthTime(window.start)) – \(healthTime(window.end))").font(.caption).foregroundStyle(.secondary) }

@@ -7,7 +7,7 @@ import Testing
         let store = try HubStore(owner: "synthetic@example.test"), scope = try h.scope(), a = try h.sample(), b = try h.sample(61, at: h.time.addingTimeInterval(60))
         try store.registerHealthScope(scope); try store.ingestHealth(h.page(scope, added: [a,b]), synthetic: true)
         let screen = try HealthScreenModel(store: store, date: HealthDates.local(h.time))
-        #expect(screen.latestWeight?.id == b.id); #expect(screen.weightDays.first?.representativeID == b.id); #expect(screen.weightSources.first == h.source)
+        #expect(screen.latestWeight?.id == b.id); #expect(screen.weightDays.first?.representativeID == a.id); #expect(screen.weightSources.first == h.source)
         #expect(HealthMetric.bodyFatPercentage.displayValue(0.2) == 20); #expect(HealthMetric.bodyMass.displayUnit == "kg")
         try store.markHealthReadFailure(scope.id, state: .temporaryFailure); try screen.refresh(date: screen.date)
         #expect(screen.latestWeight?.value == 61); #expect(screen.readState(.bodyMass) == .temporaryFailure)
@@ -48,5 +48,10 @@ import Testing
         let screen = try HealthScreenModel(store:store,date:HealthDates.local(end)); #expect(screen.currentSleep == nil)
         let bed = try sample(start,end,.inBed); try store.ingestHealth(h.page(scope,anchor:Data([1]),next:2,added:[bed]),synthetic:true); try screen.refresh(date:screen.date)
         #expect(screen.currentSleep?.seconds == 28800.0); #expect(screen.currentSleepWindow?.id == bed.id)
+        // 13:00〜13:40の昼寝が後に終わっても、ホームの睡眠は主睡眠のまま。
+        let napStart = HealthDates.calendar.startOfDay(for: h.time).addingTimeInterval(13*3600)
+        let nap = try sample(napStart, napStart.addingTimeInterval(40*60), .inBed)
+        try store.ingestHealth(h.page(scope,anchor:Data([2]),next:3,added:[nap]),synthetic:true); try screen.refresh(date:screen.date)
+        #expect(screen.currentSleepWindow?.id == bed.id)
     }
 }

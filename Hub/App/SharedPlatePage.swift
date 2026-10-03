@@ -85,7 +85,7 @@ struct SharedPlatePage: View {
         if !preview && analyze == nil { Text("写真はこの端末にだけ保存します。解析の実送信は利用開始の確認後に接続します。").font(.caption).foregroundStyle(.secondary) }
       }
       if let session = model.session {
-        Section("食事中 · \(session.date) · \(session.slot)") {
+        Section("食事中 · \(mockDay(session.date)) · \(session.slot)") {
           photo(session.before, title: "食べる前")
           TextField("料理・取り分けの補足", text: Binding(get: { model.session?.note ?? "" }, set: { text in model.change { $0.note = text } }), axis: .vertical)
           Picker("分けた人数（任意）", selection: Binding(get: { model.session?.people ?? 0 }, set: { people in model.change { $0.people = people == 0 ? nil : people } })) {

@@ -17,6 +17,16 @@ import SwiftUI
     self.store=store;self.onSaved=onSaved;state=try store.snapshot()
   }
   var canSimulateReceipt:Bool {store is FoodLocalStore}
+  func editingBlocked(_ mealID:String) -> Bool {
+    let related=state.pending.filter {$0.meal.id==mealID}
+    return related.contains {$0.state == .needsReview || $0.undoRequested}
+      || (!store.permitsQueuedEdits && !related.isEmpty)
+  }
+  func saveStatus(_ mealID:String) -> String? {
+    if state.pending.contains(where:{$0.meal.id==mealID}) {return "端末に保存済み · 送信待ち"}
+    if state.acknowledged.contains(where:{$0.id==mealID}) {return "保存済み · 取得待ち"}
+    return nil
+  }
   func refresh() throws {state=try store.snapshot()}
   @discardableResult func perform(_ action: () throws -> Void) -> Bool {
     do {
@@ -138,8 +148,11 @@ struct FoodHubPage: View {
   @Bindable var model: FoodScreenModel
   @Environment(\.dynamicTypeSize) private var textSize
   @State var date: Date
-  @State private var slot = "朝食"
+  @State private var slot = FoodHubPage.defaultSlot()
+  @State private var slotChosen = false
+  @State private var chosenOnDay: Date?
   @State private var query = ""
+  @FocusState private var searchFocused: Bool
   @State private var category: String?
   @State private var presetMode = PresetDisplayPreferences.mode
   @State private var fixedPresetOrder = PresetDisplayPreferences.fixedOrder
@@ -190,17 +203,27 @@ struct FoodHubPage: View {
       let foodTotal = projection?.localTotal ?? FoodTotal.day(day, meals: model.state.confirmed)
       let total = (try? planning?.totalWithSupplements(foodTotal, date: day)) ?? foodTotal
       HStack(spacing: 8) {
-        Button { dateChosen=true; date=FoodDates.calendar.date(byAdding: .day, value: -1, to: date)! } label: { Image(systemName: "chevron.left").frame(width: 32, height: 44) }.accessibilityLabel("前の日")
+        Button { dateChosen=true; chosenOnDay=RecordingPreferences.day(); date=FoodDates.calendar.date(byAdding: .day, value: -1, to: date)! } label: { Image(systemName: "chevron.left").frame(width: 32, height: 44) }.accessibilityLabel("前の日")
         Text(mockDay(date)).font(.headline).frame(maxWidth: .infinity, alignment: .leading)
-        Picker("記録の区分", selection: $slot) { ForEach(FoodRules.slots, id: \.self) { Text($0) } }.pickerStyle(.menu).font(.subheadline)
-        Button { dateChosen=true; date=FoodDates.calendar.date(byAdding: .day, value: 1, to: date)! } label: { Image(systemName: "chevron.right").frame(width: 32, height: 44) }.accessibilityLabel("次の日")
+        if implicitDate && date != RecordingPreferences.day() {
+          // 今日以外を見ているときだけ出す。押せばすぐ今日へ戻る（10/4）。
+          Button("今日に戻る") { dateChosen=false; chosenOnDay=nil; slotChosen=false; refreshImplicitDate() }.font(.caption.bold()).buttonStyle(.bordered).tint(pine)
+        }
+        Button { dateChosen=true; chosenOnDay=RecordingPreferences.day(); date=FoodDates.calendar.date(byAdding: .day, value: 1, to: date)! } label: { Image(systemName: "chevron.right").frame(width: 32, height: 44) }.accessibilityLabel("次の日")
       }
+      // 区分は4つ並びの切替で1タップ（N08）。初期値は時刻から決め、本人が選んだら固定する。
+      MotionSegments(title: "記録の区分", selection: Binding(get: { slot }, set: { slot=$0; slotChosen=true }), options: FoodRules.slots.map { ($0, $0) })
       ScrollView(.horizontal, showsIndicators: false) {
         HStack { categoryButton("すべて", id: nil); ForEach(model.state.catalog.categories.filter { !$0.archived }) { c in categoryButton(c.name, id: c.id) } }
       }
       HStack(spacing: 10) {
         Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
         TextField("食べ物を検索", text: $query).accessibilityIdentifier("food-preset-search")
+          .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused=false }
+        if !query.isEmpty {
+          Button { query=""; searchFocused=false } label: { Image(systemName:"xmark.circle.fill").foregroundStyle(.secondary).frame(width:32,height:32).contentShape(Rectangle()) }
+            .buttonStyle(.plain).accessibilityLabel("検索文字を消す").accessibilityIdentifier("food-preset-clear")
+        }
         Menu {
           Button("記録する日を選ぶ") { choosingDate=true }
           Picker("並び方", selection: $presetMode) { Text("よく使う順").tag(FoodPresetRanking.Mode.frequent); Text("この区分で使う順").tag(FoodPresetRanking.Mode.mealTime) }
@@ -213,6 +236,10 @@ struct FoodHubPage: View {
       }.padding(12).background(pine.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
       if !fixedPresetOrder.isEmpty { Text("固定した並びを優先しています").font(.caption).foregroundStyle(.secondary) }
       let presets = FoodPresetRanking.order(model.state.catalog.visiblePresets(query: query, categoryID: category, aliases: searchAliases), meals: model.state.confirmed, slot: slot, mode: presetMode, fixedOrder: fixedPresetOrder)
+      if !query.isEmpty {
+        Text("\(presets.count)件のプリセット · \(model.state.catalog.categories.first(where:{$0.id==category})?.name ?? "すべて")")
+          .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("food-preset-search-count")
+      }
       if presets.isEmpty {
         Card {
           if model.state.catalog.presets.isEmpty {
@@ -222,6 +249,9 @@ struct FoodHubPage: View {
           } else {
             Label("該当するプリセットがありません", systemImage: "magnifyingglass").foregroundStyle(.secondary)
             Text("検索語やカテゴリーを変えてください。非表示の設定は編集から確認できます。").font(.caption).foregroundStyle(.secondary)
+            if category != nil {
+              Button("すべてのカテゴリーで探す") { category=nil; searchFocused=false }.buttonStyle(.bordered)
+            }
           }
         }
       }
@@ -271,7 +301,7 @@ struct FoodHubPage: View {
         NavigationLink("履歴") { FoodHistoryPage(model: model, initialDate: date, syncing: syncing) }
       }
       ForEach(FoodRules.slots, id: \.self) { section in
-        let meals = model.state.confirmed.filter {
+        let meals = (projection?.meals ?? model.state.confirmed).filter {
           !$0.removed && $0.date == day && $0.slot == section
         }
         if !meals.isEmpty {
@@ -279,21 +309,23 @@ struct FoodHubPage: View {
           ForEach(meals) { meal in
             Card {
               FoodMealContents(meal: meal)
+              if let status=model.saveStatus(meal.id) {Text(status).font(.caption).foregroundStyle(.secondary)}
               HStack {
                 Button("量・日付を変更") { editing = meal }
                 Spacer()
                 Button("取消", role: .destructive) { removing = meal }
-              }.font(.subheadline).disabled(model.state.pending.contains { $0.meal.id == meal.id })
+              }.font(.subheadline).disabled(model.editingBlocked(meal.id))
             }
           }
         }
       }
-      if model.state.confirmed.filter({ !$0.removed && $0.date == day }).isEmpty {
-        Card { Text("確定した食事はありません").foregroundStyle(.secondary) }
+      if (projection?.meals ?? model.state.confirmed).filter({ !$0.removed && $0.date == day }).isEmpty {
+        Card { Text("この日の食事はありません").foregroundStyle(.secondary) }
       }
-      if let projection, !projection.pending.isEmpty {
-        Text("端末に保存済み · 送信待ち").font(.title3.bold())
-        ForEach(projection.pending) { op in
+      if let projection {
+        let notices = projection.pending.filter {$0.meal.removed || $0.undoRequested || projection.reviewIDs.contains($0.id)}
+        if !notices.isEmpty { Text("端末に保存済み · 送信待ち").font(.title3.bold()) }
+        ForEach(notices) { op in
           Card {
             FoodMealContents(meal: op.meal)
             Text(op.meal.removed ? "取消の送信待ち" : "保存の送信待ち").foregroundStyle(.secondary)
@@ -309,6 +341,11 @@ struct FoodHubPage: View {
         }
       #endif
     }.modifier(FoodUndoOverlay(model: model))
+    .toolbar {
+      ToolbarItemGroup(placement:.keyboard) {
+        if searchFocused { Spacer(); Button("検索") { searchFocused=false } }
+      }
+    }
     .sheet(isPresented:$labelOCR){NavigationStack{FoodLabelPage(model:model,preview:preview)}}
     .onAppear { refreshImplicitDate(); fixedPresetOrder=PresetDisplayPreferences.fixedOrder; searchAliases=FoodSearchPreferences.aliases }
     .onChange(of: catalog) { _, open in if !open { searchAliases=FoodSearchPreferences.aliases } }
@@ -322,7 +359,7 @@ struct FoodHubPage: View {
     .animation(Motion.animation(reduceMotion: motion.reduced), value: model.state.confirmed.filter { !$0.removed }.map(\.id))
     .sheet(isPresented: $choosingDate) {
       NavigationStack {
-        DatePicker("記録する日", selection: Binding(get: { date }, set: { dateChosen=true; date=$0 }), displayedComponents: .date)
+        DatePicker("記録する日", selection: Binding(get: { date }, set: { dateChosen=true; chosenOnDay=RecordingPreferences.day(); date=$0 }), displayedComponents: .date)
           .datePickerStyle(.graphical).environment(\.timeZone, FoodDates.calendar.timeZone).padding().navigationTitle("記録する日")
           .navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement:.confirmationAction) { Button("完了") { choosingDate=false } } }
       }.presentationDetents([.medium,.large])
@@ -362,8 +399,16 @@ struct FoodHubPage: View {
     }.buttonStyle(.plain)
   }
   private func refreshImplicitDate() {
+    // 別の日を選んだまま記録日が変わったら（翌朝に開いたなど）、選択を解いて今日へ戻す（10/4）。
+    if dateChosen, let chosenOnDay, chosenOnDay != RecordingPreferences.day() { dateChosen=false; self.chosenOnDay=nil; slotChosen=false }
     guard implicitDate && !dateChosen && !analysis && !catalog && editing == nil && removing == nil && unusualPreset == nil else { return }
     date = RecordingPreferences.day()
+    if !slotChosen { slot = FoodHubPage.defaultSlot() }
+  }
+  /// 時刻から区分の初期値を決める：〜4:00 間食（夜食）、〜10:30 朝食、〜15:00 昼食、〜17:00 間食、それ以降 夕食。
+  static func defaultSlot(at now: Date = .now) -> String {
+    let c = FoodDates.calendar.dateComponents([.hour, .minute], from: now), m = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+    switch m { case ..<240: return "間食"; case ..<630: return "朝食"; case ..<900: return "昼食"; case ..<1020: return "間食"; default: return "夕食" }
   }
 }
 struct FoodMealContents: View {
@@ -497,11 +542,12 @@ struct FoodHistoryPage: View {
                 MockFigure(value:meal.items.allSatisfy { $0.nutrients.kcal == nil } ? "—" : foodNumber(FoodTotal(items:meal.items).known[.kcal]),unit:"kcal",size:18)
                 HubMealMacroLine(items:meal.items)
               }
+              if let status=model.saveStatus(meal.id) {Text(status).font(.caption).foregroundStyle(.secondary)}
             }
             MotionRowMenu(title: meal.items.map(\.name).joined(separator: "・")) {
               MotionMenuAction(title: "量・日付を変更") { editing=meal }
               MotionMenuAction(title: "取消", role: .destructive) { removing=meal }
-            }.disabled(model.state.pending.contains { $0.meal.id == meal.id })
+            }.disabled(model.editingBlocked(meal.id))
           }.transition(.move(edge: .trailing).combined(with: .opacity)) }
           } label: {
             HStack { Circle().fill(pine.opacity(0.6)).frame(width: 9,height: 9); Text(slot).font(.headline); Text(hubFoodEnergy(meals.flatMap(\.items))+" kcal").font(.subheadline) }
@@ -524,9 +570,15 @@ struct FoodHistoryPage: View {
       }
   }
 }
+private struct FoodCatalogRemoval: Identifiable {
+  let kind: FoodCatalogEntry.Kind, targetID: String, name: String
+  var id: String {kind.rawValue+":"+targetID}
+}
+
 struct FoodCatalogPage: View {
   @Bindable var model: FoodScreenModel
   @Environment(\.dismiss) private var dismiss
+  @State private var removal: FoodCatalogRemoval?
   @State private var newPreset = false
   @State private var newFood = false
   @State private var versionEditing: FoodVersion?
@@ -537,7 +589,8 @@ struct FoodCatalogPage: View {
   var body: some View {
     List {
       Section("登録した食品") {
-        ForEach(model.state.catalog.versions) { v in
+        ForEach(model.state.catalog.availableVersions) { v in
+          HStack {
           Button { versionEditing = v } label: {
           VStack(alignment: .leading) {
             Text(v.name).font(.headline)
@@ -546,11 +599,18 @@ struct FoodCatalogPage: View {
             ).foregroundStyle(.secondary)
           }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
           }.buttonStyle(.plain)
+          Spacer()
+          Menu {
+            Button("削除",role:.destructive) { removal=FoodCatalogRemoval(kind:.food,targetID:v.foodID,name:v.name) }
+          } label: {Image(systemName:"ellipsis").frame(width:44,height:44)}
+            .accessibilityLabel(v.name+"の食品の操作").accessibilityIdentifier("catalog-food-actions-"+v.id)
+          }
         }
         Button("食品を追加") { newFood = true }
       }
       Section("プリセット") {
-        ForEach(model.state.catalog.presets) { p in
+        ForEach(model.state.catalog.presets.filter {!model.state.catalog.isDeleted($0)}) { p in
+          HStack {
           Button {
             editing = p
           } label: {
@@ -560,6 +620,11 @@ struct FoodCatalogPage: View {
               Text(p.archived ? "非表示" : "").foregroundStyle(.secondary)
             }
           }.accessibilityLabel(p.name + "のプリセットを編集")
+          Menu {
+            Button("削除",role:.destructive) {removal=FoodCatalogRemoval(kind:.preset,targetID:p.id,name:p.name)}
+          } label: {Image(systemName:"ellipsis").frame(width:44,height:44)}
+            .accessibilityLabel(p.name+"のプリセットの操作").accessibilityIdentifier("catalog-preset-actions-"+p.id)
+          }
         }
         Button("プリセットを作成") { newPreset = true }
       }
@@ -581,7 +646,28 @@ struct FoodCatalogPage: View {
         }
         Button("カテゴリーを作成") { newCategory = true }
       }
+      let deleted=model.state.catalog.entries.filter(\.deleted)
+      if !deleted.isEmpty {
+        Section {
+          DisclosureGroup("削除済み（\(deleted.count)件）") {
+            ForEach(deleted) {entry in
+              HStack {
+                Text(deletedName(entry));Spacer()
+                Button("復元") {setDeleted(entry.kind,targetID:entry.targetID,deleted:false)}
+                  .accessibilityIdentifier("catalog-restore-"+entry.id)
+              }
+            }
+            Text("過去の食事を保つための情報は残しています。復元すると一覧から再び使えます。")
+              .font(.caption).foregroundStyle(.secondary)
+          }.accessibilityIdentifier("catalog-deleted")
+        }
+      }
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
+    }.alert("\(removal?.name ?? "項目")を削除しますか",isPresented:Binding(get:{removal != nil},set:{if !$0 {removal=nil}})) {
+      Button("削除",role:.destructive) {if let target=removal {setDeleted(target.kind,targetID:target.targetID,deleted:true)};removal=nil}
+      Button("やめる",role:.cancel) {removal=nil}
+    } message: {
+      Text(removal?.kind == .food ? "通常の食品一覧から削除し、この食品を使うプリセットも外します。過去の食事は保持します。削除済み一覧から復元できます。" : "通常のプリセット一覧から削除します。過去の食事は保持します。削除済み一覧から復元できます。")
     }.navigationTitle("食品・プリセット").navigationBarTitleDisplayMode(.inline).toolbar {
       ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
     }.sheet(isPresented: $newFood) {
@@ -634,6 +720,16 @@ struct FoodCatalogPage: View {
       Button("取消", role: .cancel) {}
     }
   }
+  private func setDeleted(_ kind: FoodCatalogEntry.Kind,targetID:String,deleted:Bool) {
+    do {var catalog=model.state.catalog;try catalog.setDeleted(kind,targetID:targetID,deleted:deleted);try model.save(catalog);error=""}
+    catch {self.error=error.localizedDescription}
+  }
+  private func deletedName(_ entry: FoodCatalogEntry) -> String {
+    let catalog=model.state.catalog
+    if entry.kind == .preset {return catalog.presets.first {$0.id==entry.targetID}?.name ?? "プリセット"}
+    return catalog.versions.filter {$0.foodID==entry.targetID}.max(by:{$0.revision<$1.revision})?.name ?? "食品"
+  }
+
 }
 struct FoodVersionEditor: View {
   let save: (FoodVersion) throws -> Void
@@ -749,7 +845,7 @@ struct FoodPresetEditor: View {
         Toggle("一覧から非表示", isOn: $archived)
       }
       Section("組み合わせる食品") {
-        ForEach(catalog.versions) { v in
+        ForEach(catalog.availableVersions) { v in
           VStack(alignment: .leading) {
             Toggle(
               "\(v.name) · \(foodNumber(v.quantity))\(v.unit)",
@@ -791,7 +887,18 @@ struct FoodPresetEditor: View {
   }
 }
 
+private struct FoodUndoBottomInsetKey: EnvironmentKey {
+  static let defaultValue: CGFloat = 0
+}
+extension EnvironmentValues {
+  var foodUndoBottomInset: CGFloat {
+    get { self[FoodUndoBottomInsetKey.self] }
+    set { self[FoodUndoBottomInsetKey.self] = newValue }
+  }
+}
+
 struct FoodUndoOverlay: ViewModifier {
+  @Environment(\.foodUndoBottomInset) private var bottomInset
   @Bindable var model: FoodScreenModel
   private var motion = MotionPolicy()
   func body(content: Content) -> some View {
@@ -800,10 +907,10 @@ struct FoodUndoOverlay: ViewModifier {
         HStack {
           Text(model.message).font(.subheadline)
           Spacer()
-          Button("取り消す", systemImage: "arrow.uturn.backward") {
+          Button("元に戻す", systemImage: "arrow.uturn.backward") {
             withAnimation(Motion.animation(reduceMotion: motion.reduced)) { model.undo() }
           }.buttonStyle(.bordered).accessibilityIdentifier("food-undo")
-        }.padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18)).padding(.horizontal, 12)
+        }.padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18)).padding(.horizontal, 12).padding(.bottom, bottomInset)
           .transition(.move(edge: .bottom).combined(with: .opacity))
           .task(id: change.operationID) {
             do { try await Task.sleep(for: .seconds(max(0, change.expiresAt.timeIntervalSinceNow))) } catch { return }

@@ -106,7 +106,7 @@ struct WeeklyAllocationPage: View {
         .font(.caption).foregroundStyle(.secondary)
       ForEach(trial.days) { day in
         VStack(alignment: .leading, spacing: 4) {
-          Text(day.date).font(.subheadline.bold())
+          Text(mockDay(day.date)).font(.subheadline.bold())
           Text("現在 \(foodNumber(day.baseGoalKcal)) ＋ 試算 \(signed(day.adjustmentKcal)) ＝ \(foodNumber(day.previewGoalKcal)) kcal")
             .font(.subheadline)
         }.accessibilityElement(children: .combine)
@@ -127,7 +127,7 @@ struct WeeklyAllocationPage: View {
       ForEach(report.days) { day in
         VStack(alignment: .leading, spacing: 4) {
           HStack {
-            Text(day.date).font(.subheadline.bold())
+            Text(mockDay(day.date)).font(.subheadline.bold())
             Spacer()
             Text(day.isIncluded ? "計算に使用" : day.exclusions.map(\.title).joined(separator: "・"))
               .font(.caption).foregroundStyle(.secondary)

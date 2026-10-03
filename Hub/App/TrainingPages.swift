@@ -203,10 +203,25 @@ struct TrainingSessionPage: View {
     @State private var saving=false
     @State private var saveMessage:String?
     private var cycle:TrainingCycleReference? { cycles.first {$0.id==cycleID} }
+    private func exerciseGroups(_ sets: [TrainingSet]) -> [(name: String, sets: [TrainingSet])] {
+        var order: [String] = []; var groups: [String: [TrainingSet]] = [:]
+        for set in sets { if groups[set.exercise] == nil { order.append(set.exercise) }; groups[set.exercise, default: []].append(set) }
+        return order.map { ($0, groups[$0]!.sorted { $0.number < $1.number }) }
+    }
+    // 「19:05–20:20（75分）」の形。時刻は本人が言ったときだけある（DESIGN 7章）。
+    private var sessionTimes: String {
+        let start = mockClock(session.startedAt), end = mockClock(session.endedAt)
+        let f = ISO8601DateFormatter(), g = ISO8601DateFormatter(); g.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let parse = { (t: String?) in t.flatMap { f.date(from: $0) ?? g.date(from: $0) } }
+        if let start, let end, let a = parse(session.startedAt), let b = parse(session.endedAt) { return "\(start)–\(end)（\(Int(b.timeIntervalSince(a) / 60))分）" }
+        if let start { return "開始 \(start) · 終了時刻なし" }
+        if let end { return "終了 \(end)" }
+        return "時刻の記録なし"
+    }
     var body: some View {
         Page(title:session.name) {
             Text(mockDay(session.date)).foregroundStyle(.secondary)
-            if let ended=session.endedAt { Text("終了 \(ended)").font(.caption) } else if let started=session.startedAt { Text("開始 \(started) · 終了時刻未記録").font(.caption) } else { Text("時刻未記録").font(.caption).foregroundStyle(.secondary) }
+            Text(sessionTimes).font(.caption).foregroundStyle(.secondary)
             if let onUpdate {
                 Card {
                     Text("Cycleとセッションの状態").font(.headline)
@@ -219,14 +234,39 @@ struct TrainingSessionPage: View {
                 }
             }
             Text("セット").font(.headline)
-            if snapshot.sets(in:session).isEmpty { Card { Text("実施セットはまだありません").foregroundStyle(.secondary) } }
-            ForEach(Array(snapshot.sets(in:session).enumerated()), id: \.element.id) { order, set in Card { TrainingSetSummary(set:set) }.motionReveal(order: order) }
-            ForEach(TrainingNote.categories,id:\.self) { category in
-                let notes=snapshot.notes(in:session).filter { $0.category==category }
-                Card { Text(category).font(.headline);if notes.isEmpty { Text("記録なし").font(.subheadline).foregroundStyle(.secondary) }
-                    ForEach(notes) { note in VStack(alignment:.leading,spacing:5) { Text(note.speaker == "GPT" ? "GPTの判断・理由":"本人の報告・質問").font(.caption).foregroundStyle(pine)
-                        if let exercise=note.exercise { Text(exercise+(note.setNumber.map { " · セット\($0)" } ?? "")).font(.caption).foregroundStyle(.secondary) }
-                        Text(note.text).font(.subheadline) } }
+            let sets = snapshot.sets(in:session)
+            if sets.isEmpty { Card { Text("実施セットはまだありません").foregroundStyle(.secondary) } }
+            // 種目ごとに1枚へまとめ、開くと各セットが1行（N10）。
+            ForEach(Array(exerciseGroups(sets).enumerated()), id: \.element.name) { order, group in
+                DisclosureGroup {
+                    VStack(spacing: 0) {
+                        ForEach(group.sets) { set in
+                            HStack { Text("\(set.number)").font(.subheadline).foregroundStyle(.secondary).frame(width: 24, alignment: .leading)
+                                Text("\(set.weightLabel) × \(set.reps)回").font(.body.weight(.medium)); Spacer()
+                                Text("RPE " + (set.rpe.map { $0.formatted() } ?? "—")).font(.subheadline).foregroundStyle(set.rpe == nil ? .secondary : .primary)
+                            }.padding(.vertical, 8)
+                            if set.id != group.sets.last?.id { Divider() }
+                        }
+                    }.padding(.top, 6)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(group.name).font(.headline).foregroundStyle(.primary)
+                            if let top = group.sets.max(by: { ($0.weight, $0.reps) < ($1.weight, $1.reps) }) { Text("最大 \(top.weightLabel) × \(top.reps)回").font(.caption).foregroundStyle(.secondary) }
+                        }
+                        Spacer(); Text("\(group.sets.count)セット").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }.padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16)).tint(pine).motionReveal(order: order)
+            }
+            let notes = snapshot.notes(in:session)
+            if !notes.isEmpty {
+                Text("補足").font(.headline)
+                ForEach(TrainingNote.categories.filter { c in notes.contains { $0.category == c } }, id:\.self) { category in
+                    Card { Text(category).font(.headline)
+                        ForEach(notes.filter { $0.category == category }) { note in VStack(alignment:.leading,spacing:5) { Text(note.speaker == "GPT" ? "GPTの判断・理由":"本人の報告・質問").font(.caption).foregroundStyle(pine)
+                            if let exercise=note.exercise { Text(exercise+(note.setNumber.map { " · セット\($0)" } ?? "")).font(.caption).foregroundStyle(.secondary) }
+                            Text(note.text).font(.subheadline) } }
+                    }
                 }
             }
         }.onAppear { cycleID=session.cycleID ?? "";slotID=session.slotID ?? "";lifecycle=session.lifecycle }
@@ -250,10 +290,15 @@ struct TrainingGradesPage: View {
     @State private var seriesID=""
     @State private var selectedPoint:TrainingPoint?
     private var end:String { TrainingDates.string(date) }
-    private func seriesLabel(_ s: TrainingSeries) -> String {
-        let parts = s.id.split(separator:"／").map(String.init)
-        guard parts.count == 4 else { return s.id }
-        return [parts[3] == "標準" ? nil : parts[3], parts[1] == "通常" ? nil : parts[1], parts[2] == "機器未記録" ? nil : parts[2]].compactMap { $0 }.joined(separator:"・").ifEmpty("通常")
+    private func seriesLabel(_ s: TrainingSeries) -> String { trainingSeriesLabel(s.id) }
+    // 自重は重量・推定1RMがない。補助は補助量が少ないほど強いので推定1RMと自己ベストを出さない。
+    private func metricOptions(_ basis: TrainingWeightBasis) -> [(TrainingMetric, String)] {
+        switch basis {
+        case .standard: [(.weight,"重量×回数"),(.estimatedOneRM,"推定1RM"),(.measuredOneRM,"実測1RM")]
+        case .added: [(.weight,"加重×回数"),(.reps,"回数")]
+        case .assisted: [(.weight,"補助量"),(.reps,"回数")]
+        case .bodyweight: [(.reps,"回数"),(.rpe,"RPE")]
+        }
     }
     private var start:String { period == 0 ? "0001-01-01":TrainingDates.string(TrainingDates.calendar.date(byAdding:.day,value:1-period,to:date)!) }
     var body: some View {
@@ -270,13 +315,14 @@ struct TrainingGradesPage: View {
                 VStack(spacing:4) {
                     HStack(alignment:.firstTextBaseline,spacing:10) {
                         if metric == .estimatedOneRM { MockFigure(value:last.value.formatted(),unit:"kg",size:44) }
-                        else { HStack(alignment:.firstTextBaseline,spacing:2) { MockFigure(value:last.set.weight.formatted(),unit:"kg",size:44);Text("×").font(.title2);MockFigure(value:String(last.set.reps),unit:"回",size:44) } }
+                        else if last.set.basis == .standard { HStack(alignment:.firstTextBaseline,spacing:2) { MockFigure(value:last.set.weight.formatted(),unit:"kg",size:44);Text("×").font(.title2);MockFigure(value:String(last.set.reps),unit:"回",size:44) } }
+                        else { Text("\(last.set.weightLabel) × \(last.set.reps)回").font(.system(size:30,weight:.semibold,design:.rounded)) }
                         if bests.contains(last.id) { TrainingPRStamp(key:last.id) }
                     }
                     Text("RPE "+(last.set.rpe.map {$0.formatted()} ?? "未報告")+"  |  "+mockShort(last.date)+(metric == .estimatedOneRM ? "  |  \(last.set.weightLabel) × \(last.set.reps)回から":"")).font(.subheadline).foregroundStyle(.secondary)
                 }.frame(maxWidth:.infinity)
             }
-            MotionSegments(title: "指標", selection: $metric, options: [(.weight,"重量×回数"),(.estimatedOneRM,"推定1RM"),(.measuredOneRM,"実測1RM")])
+            MotionSegments(title: "指標", selection: $metric, options: metricOptions(full?.basis ?? .standard))
             Menu { Button("回数") { metric = .reps }; Button("RPE") { metric = .rpe } } label: { Text([.reps,.rpe].contains(metric) ? "表示中：\(metric.rawValue)" : "ほかの指標（回数・RPE）").font(.caption) }
             Card {
                 if points.isEmpty { ContentUnavailableView("この指標の記録はありません",systemImage:"chart.xyaxis.line",description:Text(metric == .measuredOneRM ? "最大試技・成功を明示した1回だけを表示します。":"欠測を0で埋めず、報告された値だけを表示します。")) }
@@ -347,11 +393,23 @@ struct TrainingGradesPage: View {
             }
         }
         .onChange(of:"\(exercise.rawValue)/\(metric.rawValue)/\(seriesID)/\(period)") { _, _ in selectedPoint=nil;chartDate=nil }
-        .sheet(item:$selectedPoint) { point in NavigationStack { Page(title:"根拠セット") { Text(point.date).foregroundStyle(.secondary);Card { TrainingSetSummary(set:point.set) };Text("この確定セットがグラフの点の根拠です。").font(.caption).foregroundStyle(.secondary) }.toolbar { ToolbarItem(placement:.confirmationAction) { Button("閉じる") { selectedPoint=nil } } } } }
+        // 重量の種類が変わったら、その種類で使える指標へ切り替える（自重の懸垂は回数から）。
+        .onChange(of:"\(exercise.rawValue)/\(seriesID)") { _, _ in
+            let basis = (snapshot.series(for:exercise).first { $0.id == seriesID } ?? snapshot.series(for:exercise).first)?.basis ?? .standard
+            let allowed = metricOptions(basis).map(\.0) + [.reps, .rpe]
+            if !allowed.contains(metric) { metric = metricOptions(basis).first?.0 ?? .reps }
+        }
+        .sheet(item:$selectedPoint) { point in NavigationStack { Page(title:"根拠セット") { Text(mockDay(point.date)).foregroundStyle(.secondary);Card { TrainingSetSummary(set:point.set) };Text("この確定セットがグラフの点の根拠です。").font(.caption).foregroundStyle(.secondary) }.toolbar { ToolbarItem(placement:.confirmationAction) { Button("閉じる") { selectedPoint=nil } } } } }
     }
 }
 
 extension String { func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self } }
+/// 系列ID「種目／重量基準／機器／変種」を人が読む名前へ。標準・通常・機器未記録は書かない（例：「ポーズ」「加重」「通常」）。
+func trainingSeriesLabel(_ id: String) -> String {
+    let parts = id.split(separator:"／").map(String.init)
+    guard parts.count == 4 else { return id }
+    return [parts[3] == "標準" ? nil : parts[3], parts[1] == "通常" ? nil : parts[1], parts[2] == "機器未記録" ? nil : parts[2]].compactMap { $0 }.joined(separator:"・").ifEmpty("通常")
+}
 private let prGold = Color(red:0.80, green:0.58, blue:0.10)
 
 // M09：自己ベストの日だけ、スタンプが押される。表示ごとに1回だけ動き、視差効果を減らす設定では止まる。

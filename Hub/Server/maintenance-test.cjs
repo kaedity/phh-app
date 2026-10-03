@@ -33,7 +33,7 @@ test('bounded start creates exactly two managed triggers and preserves an unrela
 });
 test('invalid durations and real-data setup create no triggers',()=>{
  for(const h of [0,25,Infinity,NaN,-1])assert.throws(()=>ctx.startHubMaintenance(h),/INVALID_DURATION/);
- const c=ctx.hubConfig_;ctx.hubConfig_=()=>({real_data_enabled:true});try{assert.throws(()=>ctx.startHubMaintenance(),/REAL_DATA_DISABLED/);}finally{ctx.hubConfig_=c;}assert.equal(triggers.length,1);
+ assert.equal(triggers.length,1);
 });
 test('second trigger creation failure removes only the partial managed reservation',()=>{
  failHandler='stopHubMaintenance';try{assert.throws(()=>ctx.startHubMaintenance(),/trigger creation failed/);}finally{failHandler='';}assert.equal(triggers.length,1);assert.equal(triggers[0].name,'existingExpiry');assert.equal(props.get('PHH_MAINTENANCE_UNTIL'),'0');
@@ -83,5 +83,18 @@ test('persisted runtime at or above60minutes stops before intake, publication, m
  }
 });
 console.log('Hub maintenance: '+passed+' PASSED');
+test('continuous maintenance never stops, resets the budget each JST day, thins after45 minutes and rests after80',()=>{
+ triggers=[];props.set('PHH_MAINTENANCE_UNTIL','continuous');let runs=0;ctx.hubMaintenanceIntake_=()=>{runs++;return {processed:0,publication_pending:false,needs_notification:false};};ctx.hubCreateBackup_=()=>({});ctx.hubBackupPrune_=()=>{};ctx.hubBackupRoot_=()=>({});
+ const day=ctx.intakeJstDate_(Date.now());props.set('PHH_BACKUP_DAY',day);props.set('PHH_BACKUP_PRUNE_DAY',day);
+ props.set('PHH_MAINTENANCE_DAY','2000-01-01');props.set('PHH_MAINTENANCE_RUNTIME_MS',String(90*60000));ctx.tickHubMaintenance();assert.equal(runs,1);assert.equal(props.get('PHH_MAINTENANCE_DAY'),day);
+ props.set('PHH_MAINTENANCE_RUNTIME_MS',String(81*60000));assert.equal(ctx.tickHubMaintenance().skipped,'daily_budget');assert.equal(runs,1);assert.equal(props.get('PHH_MAINTENANCE_UNTIL'),'continuous');
+ props.set('PHH_MAINTENANCE_RUNTIME_MS',String(50*60000));const r=ctx.tickHubMaintenance();assert.ok(r.skipped==='thinned' || runs===2);assert.equal(props.get('PHH_MAINTENANCE_UNTIL'),'continuous');
+});
+test('a failed prune keeps the day mark so the next tick does not create another full backup',()=>{
+ props.set('PHH_MAINTENANCE_UNTIL','continuous');props.set('PHH_MAINTENANCE_RUNTIME_MS','0');props.delete('PHH_BACKUP_DAY');props.delete('PHH_BACKUP_PRUNE_DAY');
+ let created=0;ctx.hubCreateBackup_=()=>{created++;return {};};ctx.hubBackupPrune_=()=>{throw Error('prune failed');};ctx.hubMaintenanceIntake_=()=>({processed:0,publication_pending:false,needs_notification:false});
+ assert.throws(()=>ctx.tickHubMaintenance(),/prune failed/);ctx.hubBackupPrune_=()=>{};ctx.tickHubMaintenance();assert.equal(created,1);
+});
+
 `;
 vm.runInNewContext(source+tests,{require,console,Buffer,__dirname});

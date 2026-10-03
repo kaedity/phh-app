@@ -31,3 +31,26 @@ public extension TrainingSnapshot {
         performedSessions.filter { $0.kind == kind && $0.date <= date }.sorted { ($0.date,$0.endedAt ?? $0.startedAt ?? "",$0.id) < ($1.date,$1.endedAt ?? $1.startedAt ?? "",$1.id) }.last
     }
 }
+
+// ホームの「前回からの経過」（DESIGN 7章）。終了時刻→「Push 26時間」、開始時刻のみ→「Pull 開始から26時間」、
+// 時刻なし→「Leg 10/1（2日前）」、48時間以上は日数。小数秒つきの時刻も読む。
+public enum TrainingElapsed {
+    static func instant(_ text: String) -> Date? {
+        let f = ISO8601DateFormatter(); if let d = f.date(from: text) { return d }
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f.date(from: text)
+    }
+    private static var calendar: Calendar { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "Asia/Tokyo")!; return c }
+    static func span(_ hours: Int) -> String { hours >= 48 ? "\(hours / 24)日" : "\(hours)時間" }
+    public static func text(for kind: TrainingKind, in snapshot: TrainingSnapshot, today: String, now: Date) -> String {
+        guard let session = snapshot.lastSession(of: kind, onOrBefore: today) else { return "\(kind.rawValue) —" }
+        if let end = session.endedAt.flatMap(instant) { return "\(kind.rawValue) \(span(max(0, Int(now.timeIntervalSince(end) / 3600))))" }
+        if let start = session.startedAt.flatMap(instant) { return "\(kind.rawValue) 開始から\(span(max(0, Int(now.timeIntervalSince(start) / 3600))))" }
+        let parts = session.date.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3, let day = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return "\(kind.rawValue) \(session.date)" }
+        let days = calendar.dateComponents([.day], from: day, to: calendar.startOfDay(for: now)).day ?? 0
+        return "\(kind.rawValue) \(parts[1])/\(parts[2])（\(days == 0 ? "今日" : days == 1 ? "昨日" : "\(days)日前")）"
+    }
+    public static func summary(_ snapshot: TrainingSnapshot, today: String, now: Date) -> String {
+        TrainingKind.allCases.map { text(for: $0, in: snapshot, today: today, now: now) }.joined(separator: " · ")
+    }
+}

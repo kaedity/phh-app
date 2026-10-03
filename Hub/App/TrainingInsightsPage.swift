@@ -73,7 +73,7 @@ struct TrainingInsightsPage: View {
             }
             ForEach(assessment.observations) { point in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(point.date) · 推定1RM \(point.value.formatted()) kg").font(.subheadline.bold())
+                    Text("\(mockDay(point.date)) · 推定1RM \(point.value.formatted()) kg").font(.subheadline.bold())
                     Text("根拠：\(point.set.weightLabel) × \(point.set.reps)回（セット\(point.set.number)）")
                         .font(.caption).foregroundStyle(.secondary)
                 }.accessibilityElement(children: .combine)
@@ -113,11 +113,7 @@ struct TrainingInsightsPage: View {
         guard let data = try? JSONEncoder().encode(values), let json = String(data: data, encoding: .utf8) else { return }
         majorSeriesJSON = json
     }
-    private func seriesLabel(_ id: String) -> String {
-        let parts = id.split(separator: "／").map(String.init)
-        guard parts.count == 4 else { return id }
-        return [parts[3], parts[2], parts[1]].joined(separator: "・")
-    }
+    private func seriesLabel(_ id: String) -> String { trainingSeriesLabel(id) }
     private func reload() {
         do {
             let rows = try ["TrainingSessions", "TrainingSets", "TrainingNotes"].flatMap { try hub.rows(table: $0) }

@@ -2,7 +2,7 @@ import Foundation
 
 public enum FoodCatalogReader {
   public static func catalog(_ rows:[LocalRow]) throws -> FoodCatalog {
-    let rows=rows.filter { ["FoodVersions","FoodNutrients","Categories","Presets","PresetItems"].contains($0.table) }
+    let rows=rows.filter { ["FoodVersions","FoodNutrients","Categories","Presets","PresetItems","CatalogEntries"].contains($0.table) }
     for row in rows { try Schema.validate(row) }
     guard Set(rows.map(\.id)).count==rows.count else { throw HubError.invalidResponse }
     let roots=rows.filter {$0.table=="FoodVersions"},nutrients=rows.filter {$0.table=="FoodNutrients"},presets=rows.filter {$0.table=="Presets"},components=rows.filter {$0.table=="PresetItems"}
@@ -27,7 +27,7 @@ public enum FoodCatalogReader {
       guard all.allSatisfy({($0.values["number"]?.number ?? -1)>=0}),!cs.isEmpty,cs.count<=50,Set(cs.compactMap {$0.values["food_version_id"]?.text}).count==cs.count,cs.enumerated().allSatisfy({i,r in r.values["number"]?.number==Double(i+1) && r.revision==root.revision && r.active==root.active}),all.filter({$0.values["number"]?.number==0}).allSatisfy({!$0.active && $0.revision<=root.revision}) else { throw HubError.invalidResponse }
       return try .init(id:root.entityID,revision:root.revision,name:root.foodText("name"),categoryID:root.values["category_id"]?.text,components:cs.map {try .init(versionID:$0.foodText("food_version_id"),factor:$0.foodNumber("factor"))},archived:!root.active)
     }
-    do { return try .init(versions:versions,categories:categories,presets:ps) } catch { throw HubError.invalidResponse }
+    do { return try .init(versions:versions,categories:categories,presets:ps,entries:FoodCatalogEntryRows.entries(rows)) } catch { throw HubError.invalidResponse }
   }
 }
 private extension LocalRow {

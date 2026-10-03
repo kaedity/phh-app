@@ -100,5 +100,8 @@ function intakeSummaryForHub_(state,date,now,store=null) {
   const lines=['【PHH 概要】'+date+'（更新 '+new Date(now).toISOString()+'）','保存済み既知合計 '+fmtTotal('kcal')+' kcal／P '+fmtTotal('protein_g')+'／F '+fmtTotal('fat_g')+'／C '+fmtTotal('carbohydrate_g')];
   for(const r of rs)lines.push(r.type==='session'?r.session+'｜状態 '+r.lifecycle_state+(r.plan_slot_id?'｜予定枠 '+r.plan_slot_id:''):r.type==='meal'?r.slot+'｜'+r.name+'｜番号'+r.no+'｜'+r.quantity+' '+r.unit+'｜'+fmt(r.kcal)+' kcal P'+fmt(r.protein_g)+' F'+fmt(r.fat_g)+' C'+fmt(r.carbohydrate_g):r.type==='set'?r.session+'｜'+r.exercise+'｜セット'+r.set_no+'｜'+r.weight_kg+'kg×'+r.reps+'｜RPE '+fmt(r.rpe):r.session+'｜'+(r.exercise || 'セッション全体')+'｜補足（'+r.category+'・'+r.speaker+'）'+r.text);
   if(store && typeof hubP5Enabled_==='function' && hubP5Enabled_())lines.push(...hubP5SummaryLines_(store,date));
-  lines.push('書き込み完了待ち '+(state.pending_count || 0)+'件');const reviews=state.reviews.filter(r=>r.status==='未対応');lines.push('■要確認：'+reviews.length+'件');for(const r of reviews)lines.push('要確認 '+r.id+'｜'+r.message);return lines.join('\n');
+  lines.push('書き込み完了待ち '+(state.pending_count || 0)+'件');const reviews=state.reviews.filter(r=>r.status==='未対応');lines.push('■要確認：'+reviews.length+'件');
+  // 要確認が増えても1セル5万文字を超えて公開が止まらないよう、新しい20件だけ載せる（10/4）。全件は結果ブックの「要確認」タブ。
+  const shown=reviews.slice().sort((a,b)=>(b.created_at||0)-(a.created_at||0)).slice(0,20);for(const r of shown)lines.push('要確認 '+r.id+'｜'+String(r.message).slice(0,300));if(reviews.length>shown.length)lines.push('ほか'+(reviews.length-shown.length)+'件は結果ブックの「要確認」タブ');
+  const text=lines.join('\n');return text.length>45000?text.slice(0,45000)+'\n（長すぎるため省略。詳細は各タブ）':text;
 }

@@ -55,6 +55,11 @@ public struct ReferenceFood: Codable, Equatable, Identifiable, Sendable {
   public let code: String, groupCode: String, group: String, name: String, note: String
   public let kcal: String, protein: String, fat: String, carbohydrate: String
   private let searchKey: String
+  private let commonNameKeys: [String]
+  // 原表の名称・数値は保ち、食品番号が確定している通称だけ検索へ追加します。
+  private static let commonNames = [
+    "12005": ["ゆで卵", "ゆでたまご", "茹で卵", "ゆで玉子", "茹で玉子"]
+  ]
   private enum CodingKeys: String, CodingKey {
     case code, groupCode, group, name, note, kcal, protein, fat, carbohydrate
   }
@@ -67,6 +72,7 @@ public struct ReferenceFood: Codable, Equatable, Identifiable, Sendable {
     self.note = note; self.kcal = kcal; self.protein = protein; self.fat = fat
     self.carbohydrate = carbohydrate
     searchKey = JapaneseSearch.normalized(name + " " + code)
+    commonNameKeys = (Self.commonNames[code] ?? []).map(JapaneseSearch.normalized)
     try validate()
   }
 
@@ -113,6 +119,7 @@ public struct ReferenceFood: Codable, Equatable, Identifiable, Sendable {
 
   fileprivate func matches(_ normalizedQuery: String) -> Bool {
     normalizedQuery.isEmpty || searchKey.contains(normalizedQuery)
+      || commonNameKeys.contains { $0.contains(normalizedQuery) }
   }
 
   /// 100gの食品版を保存し、プリセットの既定量は倍率で表します。過去の版は書き換えません。

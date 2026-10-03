@@ -45,6 +45,7 @@ import Foundation
                     if next.operation.requiresHealthContract, try !store.canSendHealth(next.operation) { continue }
                     guard current.state == .queued, forceQueued || current.retryAt <= now else { break queueBatches }
                     // 古いAPIへのP4送信を止め、差分取得で対応状況を確認します。
+                    if next.operation.requiresCatalogEntryContract, try store.catalogEntryContract != 1 {break queueBatches}
                     if next.operation.requiresHydrationContract, try store.hydrationContract != 1 {break queueBatches}
                     if next.operation.requiresPlanningContract, try store.planningContract != 1 { break queueBatches }
                     if next.operation.requiresFoodContract, try store.foodContract != 1 { break queueBatches }
@@ -60,12 +61,15 @@ import Foundation
                             committed = true; continue
                         }
                         let code = receipt.error_code ?? "INVALID_RESPONSE"
-                        if receipt.retryable && ["BUSY", "STORAGE_UNAVAILABLE"].contains(code) { throw HubError.remote(code) }
+                        // サーバーが再試行可能と示したものは、種類に関係なく時間をおいて同じ操作IDで再送します（重複はサーバーが防ぐ）。
+                        if receipt.retryable { throw HubError.remote(code) }
                         let kind: PendingState = ["REVISION_CONFLICT", "CONFLICT"].contains(code) ? .conflict : .invalid
                         try store.deferOperation(next.id, state: kind, message: "要確認：\(code)", retryAt: now); break queueBatches
                     } catch {
                         let auth = error as? HubError == .authentication || error as? HubError == .accountChanged
-                        let invalid = [.invalidResponse, .invalidOperation, .configuration].contains(error as? HubError)
+                        // 応答の読み取り失敗はGAS側の一時的な中断でも起きるため、数回は再送します。それでも続けば要確認にします。
+                        let unreadable = error as? HubError == .invalidResponse && current.attempts < 4
+                        let invalid = !unreadable && [.invalidResponse, .invalidOperation, .configuration].contains(error as? HubError)
                         let kind: PendingState = auth ? .authentication : invalid ? .invalid : .queued
                         let delay = min(300, 5 * pow(2, Double(min(current.attempts, 6))))
                         try store.deferOperation(next.id, state: kind, message: auth ? "Googleへ再接続してください" : invalid ? "取得結果が不正です・要確認" : "通信を再試行します", retryAt: now.addingTimeInterval(delay))
