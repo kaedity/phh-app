@@ -42,7 +42,7 @@ import SwiftUI
     try .init(products: records.compactMap { $0.mutation.product },
       plans: records.compactMap { $0.mutation.plan }, days: records.compactMap { $0.mutation.day })
   }
-  func saveGoal(from: String, phase: GoalPhase, values: GoalValues) {
+  @discardableResult func saveGoal(from: String, phase: GoalPhase, values: GoalValues) -> Bool {
     perform {
       let old = records.first { $0.mutation.goalRule?.effectiveFrom == from }
       let rule = try GoalRule(id: old?.id ?? UUID().uuidString, revision: (old?.revision ?? 0)+1,
@@ -106,6 +106,7 @@ struct PlanningDayCard: View {
     Card {
       NavigationLink { GoalDetailPage(model: model, date: date, consumed: consumed).motionZoom(id: "goal", in: cardZoom, reduced: motion.reduced) } label: {
         HStack { Label("目標と残り", systemImage: "scope"); Spacer(); Image(systemName: "chevron.right") }
+          .frame(minHeight: 44).contentShape(Rectangle())
       }.font(.headline).matchedTransitionSource(id: "goal", in: cardZoom)
       if let goal = try? model.goal(date), let combined=try? model.consumedWithSupplements(consumed,date:date), let left = try? goal.remaining(consumed: combined) {
         Text("目標 \(foodNumber(goal.total.kcal)) kcal · 残り \(foodNumber(left.kcal)) kcal").font(.subheadline).contentTransition(.numericText()).animation(Motion.animation(reduceMotion: motion.reduced), value: left.kcal)
@@ -181,6 +182,10 @@ struct GoalDetailPage: View {
 }
 struct GoalRuleEditor: View {
   let model: PlanningScreenModel
+  @Environment(\.dismiss) private var dismiss
+  private struct Draft: Equatable {
+    let from: String, phase: GoalPhase, kcal: String, protein: String, fat: String, carbohydrate: String
+  }
   @State private var date: Date
   @State private var phase: GoalPhase = .maintaining
   @State private var kcal = ""
@@ -189,28 +194,68 @@ struct GoalRuleEditor: View {
   @State private var carbohydrate = ""
   @State private var error = ""
   @State private var saved = false
-  init(model: PlanningScreenModel, date: String) { self.model = model; _date = State(initialValue: FoodDates.date(date)) }
+  @State private var acceptedDraft: Draft
+  @State private var confirmBack = false
+  @FocusState private var focusedField: String?
+  init(model: PlanningScreenModel, date: String) {
+    self.model = model
+    let goal = try? model.goal(date)
+    // 編集欄は保存値の精度を保ち、丸めた表示値を再保存しません。
+    func text(_ value: Double?) -> String {
+      value.map { $0.rounded() == $0 ? String(Int($0)) : String($0) } ?? ""
+    }
+    let initial = Draft(from: date, phase: goal?.phase ?? .maintaining,
+      kcal: text(goal?.base.kcal), protein: text(goal?.base.protein),
+      fat: text(goal?.base.fat), carbohydrate: text(goal?.base.carbohydrate))
+    _date = State(initialValue: FoodDates.date(date)); _phase = State(initialValue: initial.phase)
+    _kcal = State(initialValue: initial.kcal); _protein = State(initialValue: initial.protein)
+    _fat = State(initialValue: initial.fat); _carbohydrate = State(initialValue: initial.carbohydrate)
+    _acceptedDraft = State(initialValue: initial)
+  }
+  private var draft: Draft { .init(from: FoodDates.text(date), phase: phase, kcal: kcal, protein: protein, fat: fat, carbohydrate: carbohydrate) }
+  private var hasUnsavedInput: Bool { draft != acceptedDraft }
+  private var pendingGoal: Pending? { model.pending.first { $0.operation.planning?.goalRule?.effectiveFrom == FoodDates.text(date) } }
+  private var pendingMessage: String {
+    switch pendingGoal?.state {
+    case .queued: "この開始日の設定は送信待ちです。完了後に再度変更できます。"
+    case .authentication: "この開始日の設定は再接続待ちです。Googleへ再接続してください。"
+    case .invalid, .conflict: "この開始日の設定は要確認です。送信待ちから内容を確認してください。"
+    case nil: ""
+    }
+  }
   var body: some View {
     Form {
       DatePicker("適用開始日", selection: $date, displayedComponents: .date).environment(\.timeZone, FoodDates.calendar.timeZone)
       Section("期") { MotionRadioChoice(title: "維持期", value: GoalPhase.maintaining, selection: $phase); MotionRadioChoice(title: "増量期", value: GoalPhase.gaining, selection: $phase); MotionRadioChoice(title: "減量期", value: GoalPhase.cutting, selection: $phase) }
-      nutrientFields(kcal: $kcal, protein: $protein, fat: $fat, carbohydrate: $carbohydrate).motionFieldError(error)
+      nutrientFields(kcal: $kcal, protein: $protein, fat: $fat, carbohydrate: $carbohydrate, focus: $focusedField).motionFieldError(error)
       Text("PFCは任意です。空欄を0やkcal換算で埋めません。自動補正はオフです。").font(.caption)
       Button {
         do {
           let values = try GoalValues(kcal: planningNumber(kcal), protein: planningNumber(protein), fat: planningNumber(fat), carbohydrate: planningNumber(carbohydrate))
-          model.saveGoal(from: FoodDates.text(date), phase: phase, values: values); saved=model.message.hasPrefix("端末に保存"); error=saved ? "" : model.message; if saved { Haptics.emit(.success) }
+          saved = model.saveGoal(from: FoodDates.text(date), phase: phase, values: values)
+          error = saved ? "" : model.message
+          if saved { acceptedDraft = draft; focusedField = nil; Haptics.emit(.success) }
         } catch { self.error = error.localizedDescription }
-      } label: { MotionSaveLabel(title: "目標を端末へ保存", saved: saved) }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: .systemBackground)).accessibilityLabel(saved ? "目標を保存しました" : "目標を端末へ保存")
-      if !error.isEmpty { Text(error) }
+      } label: { MotionSaveLabel(title: "目標を端末へ保存", saved: saved) }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: pendingGoal == nil ? .systemBackground : .label)).disabled(pendingGoal != nil).accessibilityLabel(saved ? "目標を保存しました" : "目標を端末へ保存")
+      if !pendingMessage.isEmpty { Text(pendingMessage).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("goal-editor-pending") }
+      if !error.isEmpty { Text(error).foregroundStyle(.red).accessibilityIdentifier("goal-editor-error") }
     }.navigationTitle("固定目標の設定")
-    // 今の目標（期・kcal・PFC）を入れた状態で開く。空欄から始めると、増量期を見落として維持期で保存しやすいため（10/4）。
-    .onAppear {
-      guard kcal.isEmpty, protein.isEmpty, fat.isEmpty, carbohydrate.isEmpty, let goal = try? model.goal(FoodDates.text(date)) else { return }
-      phase = goal.phase
-      let text: (Double?) -> String = { $0.map { $0.formatted(.number.grouping(.never).precision(.fractionLength(0...1))) } ?? "" }
-      kcal = text(goal.base.kcal); protein = text(goal.base.protein); fat = text(goal.base.fat); carbohydrate = text(goal.base.carbohydrate)
+    .navigationBarBackButtonHidden(true)
+    .scrollDismissesKeyboard(.interactively)
+    .toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("戻る") { if hasUnsavedInput { confirmBack = true } else { dismiss() } }
+          .accessibilityIdentifier("goal-editor-back")
+      }
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer(); Button("入力を終える") { focusedField = nil }
+      }
     }
+    .alert("変更を破棄して戻りますか？", isPresented: $confirmBack) {
+      Button("破棄して戻る", role: .destructive) { dismiss() }
+      Button("続ける", role: .cancel) {}
+    } message: { Text(pendingGoal == nil ? "まだ保存していない目標の入力が消えます。" : "最後に保存した後の入力が消えます。送信待ちの設定は残ります。") }
+    .onChange(of: draft) { _, _ in saved = false; error = "" }
   }
 }
 private struct ManualGoalEditor: View {
@@ -333,6 +378,10 @@ struct PlanningQueueCard: View {
         Text("目標・サプリの送信待ち").font(.headline)
         ForEach(model.pending) { p in
           Text(p.operation.planning?.goalRule != nil ? "目標設定" : p.operation.planning?.foodDay != nil ? "記録日の完了" : "目標・サプリの変更").font(.subheadline)
+          if let rule = p.operation.planning?.goalRule {
+            Text("\(mockDay(rule.effectiveFrom))から · \(foodNumber(rule.base.kcal)) kcal")
+              .font(.caption).accessibilityIdentifier("planning-pending-goal-values")
+          }
           Text(p.message).font(.caption).foregroundStyle(.secondary)
           if p.state == .queued && p.attempts == 0 { Button("未送信の変更を取消") { model.cancel(p.id) }.buttonStyle(.bordered) }
         }
@@ -346,11 +395,16 @@ private func planningNumber(_ text: String) throws -> Double? {
   if value.isEmpty { return nil }
   guard let number = Double(value), number.isFinite else { throw GoalFailure.invalidValue }; return number
 }
-@ViewBuilder private func nutrientFields(kcal: Binding<String>, protein: Binding<String>, fat: Binding<String>, carbohydrate: Binding<String>) -> some View {
-  TextField("kcal", text: kcal).keyboardType(.numbersAndPunctuation)
-  TextField("P g（任意）", text: protein).keyboardType(.numbersAndPunctuation)
-  TextField("F g（任意）", text: fat).keyboardType(.numbersAndPunctuation)
-  TextField("C g（任意）", text: carbohydrate).keyboardType(.numbersAndPunctuation)
+@ViewBuilder private func nutrientFields(kcal: Binding<String>, protein: Binding<String>, fat: Binding<String>, carbohydrate: Binding<String>, focus: FocusState<String?>.Binding? = nil) -> some View {
+  LabeledContent("カロリー（kcal）") { nutrientField("kcal", text: kcal, key: "kcal", focus: focus) }
+  LabeledContent("P（g）") { nutrientField("P g（任意）", text: protein, key: "protein", focus: focus) }
+  LabeledContent("F（g）") { nutrientField("F g（任意）", text: fat, key: "fat", focus: focus) }
+  LabeledContent("C（g）") { nutrientField("C g（任意）", text: carbohydrate, key: "carbohydrate", focus: focus) }
+}
+@ViewBuilder private func nutrientField(_ title: String, text: Binding<String>, key: String, focus: FocusState<String?>.Binding?) -> some View {
+  let field = TextField(title, text: text).keyboardType(.numbersAndPunctuation)
+    .multilineTextAlignment(.trailing).accessibilityIdentifier(title)
+  if let focus { field.focused(focus, equals: key) } else { field }
 }
 
 func planningConsumed(total: FoodTotal) -> GoalValues {

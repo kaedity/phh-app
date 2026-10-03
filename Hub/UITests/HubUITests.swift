@@ -609,6 +609,71 @@ import XCTest
         XCTAssertFalse(app.buttons["この日だけ量を変更"].isEnabled)
         proof(app, "supplement-amount-queued")
     }
+    func testGoalEditedAfterLocalSaveIsUnsavedAndBlockedByPendingStartDate() {
+        let app = launch(["--p5-preview", "--light"])
+        tap("目標と残り", app: app)
+        let fixed = app.staticTexts["固定目標"].firstMatch
+        reveal(fixed, app: app); fixed.tap()
+        let kcal = app.textFields["kcal"]
+        XCTAssertTrue(kcal.waitForExistence(timeout: 3))
+        kcal.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+        kcal.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "2200")
+        tap("入力を終える", app: app)
+        tap("目標を端末へ保存", app: app)
+        XCTAssertTrue(app.buttons["目標を保存しました"].exists)
+        reveal(kcal, app: app)
+        kcal.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+        kcal.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "2400")
+        tap("入力を終える", app: app)
+        proof(app, "goal-edited-after-local-save")
+        XCTAssertFalse(app.buttons["目標を保存しました"].exists)
+        let save = app.buttons["目標を端末へ保存"]
+        XCTAssertTrue(save.exists); XCTAssertFalse(save.isEnabled)
+        XCTAssertTrue(app.staticTexts["goal-editor-pending"].exists)
+        tap("goal-editor-back", app: app); tap("破棄して戻る", app: app)
+        let queued = app.staticTexts["planning-pending-goal-values"]
+        reveal(queued, app: app)
+        XCTAssertTrue(queued.label.contains("2,200")); XCTAssertFalse(queued.label.contains("2,400"))
+        proof(app, "goal-queued-value-kept-after-discard")
+    }
+    func testGoalInvalidInputIsKeptAndExplicitDiscardRestoresCurrentValues() {
+        let app = launch(["--p5-preview", "--dark"])
+        tap("目標と残り", app: app)
+        let fixed = app.staticTexts["固定目標"].firstMatch
+        reveal(fixed, app: app); fixed.tap()
+        let kcal = app.textFields["kcal"]
+        XCTAssertTrue(kcal.waitForExistence(timeout: 3))
+        kcal.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+        kcal.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "-10")
+        tap("入力を終える", app: app); tap("目標を端末へ保存", app: app)
+        XCTAssertTrue(app.staticTexts["goal-editor-error"].exists)
+        XCTAssertEqual(kcal.value as? String, "-10")
+        proof(app, "goal-invalid-input-kept")
+        tap("goal-editor-back", app: app); tap("続ける", app: app)
+        XCTAssertEqual(kcal.value as? String, "-10")
+        tap("goal-editor-back", app: app); tap("破棄して戻る", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: kcal)], timeout: 3), .completed)
+        XCTAssertFalse(app.staticTexts["planning-pending-goal-values"].exists)
+        reveal(fixed, app: app); fixed.tap()
+        XCTAssertEqual(kcal.value as? String, "2000")
+    }
+    func testGoalExistingPrecisionAndNutrientLabelsRemainVisible() {
+        let app = launch(["--p5-preview", "--light", "--fractional-goal"])
+        tap("目標と残り", app: app)
+        let fixed = app.staticTexts["固定目標"].firstMatch
+        reveal(fixed, app: app); fixed.tap()
+        for (field, value) in [("kcal", "2000.25"), ("P g（任意）", "100.55"), ("F g（任意）", "50.125"), ("C g（任意）", "250.005")] {
+            XCTAssertEqual(app.textFields[field].value as? String, value)
+        }
+        for label in ["カロリー（kcal）", "P（g）", "F（g）", "C（g）"] { XCTAssertTrue(app.staticTexts[label].exists) }
+        proof(app, "goal-preserved-precision-and-labels")
+        tap("goal-editor-back", app: app)
+        XCTAssertFalse(app.alerts["変更を破棄して戻りますか？"].exists)
+        let manual = app.staticTexts["この日の手動調整"].firstMatch
+        reveal(manual, app: app); manual.tap()
+        for label in ["カロリー（kcal）", "P（g）", "F（g）", "C（g）"] { XCTAssertTrue(app.staticTexts[label].exists) }
+        proof(app, "manual-goal-nutrient-labels")
+    }
     func testSupplementInvalidAmountKeepsInputAndDiscardLeavesDayUnchanged() {
         let app = launch(["--p5-preview", "--dark"])
         tap("カテゴリー内のサプリ・自動計上", app: app)

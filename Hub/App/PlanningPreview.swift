@@ -11,8 +11,10 @@ struct PlanningPreviewRoot: View {
     let hub = try! HubStore(owner: "synthetic@example.test")
     var ops: [HubOperation] = []
     if !empty {
+      let fractional = ProcessInfo.processInfo.arguments.contains("--fractional-goal")
       let rule = try! GoalRule(effectiveFrom: "2026-10-01", phase: .maintaining,
-        base: .init(kcal: 2000, protein: 100, fat: 50, carbohydrate: 250))
+        base: .init(kcal: fractional ? 2000.25 : 2000, protein: fractional ? 100.55 : 100,
+          fat: fractional ? 50.125 : 50, carbohydrate: fractional ? 250.005 : 250))
       let goal = try! DailyGoal.calculate(date: "2026-10-02", rule: rule, freeze: true)!
       let product = try! SupplementProductVersion(name: "架空のビタミン", unit: "粒", nutrients: [
         .init(nutrientID: "kcal", value: 10, unit: "kcal", source: "商品表示"),
