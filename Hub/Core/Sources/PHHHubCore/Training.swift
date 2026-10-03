@@ -35,6 +35,11 @@ public struct TrainingSet: Identifiable, Equatable, Sendable {
     }
     public var weightLabel: String { switch basis { case .bodyweight: "自重"; case .added: "加重 +\(weight.formatted()) kg"; case .assisted: "補助 \(weight.formatted()) kg"; case .standard: "\(weight.formatted()) kg" } }
     public var measuredOneRM: Double? { explicitSuccessfulMaxAttempt && reps == 1 && basis == .standard ? weight : nil }
+    /// Epley式（方式版 `epley-v1`、10/3本人決定）。通常重量の1〜10回のセットだけ。1回は重量そのもの。
+    public var estimatedOneRM: Double? {
+        guard basis == .standard, weight > 0, (1...10).contains(reps) else { return nil }
+        return reps == 1 ? weight : (weight * (1 + Double(reps) / 30) * 10).rounded() / 10
+    }
 }
 public struct TrainingNote: Identifiable, Equatable, Sendable {
     public static let categories = ["身体状態", "動作・効き", "備考", "メニュー変更"]
@@ -87,7 +92,8 @@ public struct TrainingSnapshot: Sendable {
     }
 }
 public struct TrainingMonth: Sendable { public let sessions: [TrainingSession], days: Int, typeCounts: [TrainingKind: Int] }
-public enum TrainingMetric: String, CaseIterable, Sendable { case weight = "使用重量", reps = "回数", rpe = "RPE", measuredOneRM = "実測1RM" }
+public enum TrainingMetric: String, CaseIterable, Sendable { case estimatedOneRM = "推定1RM", weight = "使用重量", reps = "回数", rpe = "RPE", measuredOneRM = "実測1RM" }
+public struct TrainingNextTarget: Sendable, Equatable { public let weight: Double, reps: Int, raise: Bool, reason: String }
 public struct TrainingPoint: Identifiable, Sendable { public let id: String, date: String, value: Double, set: TrainingSet }
 public struct TrainingSeries: Identifiable, Sendable {
     public let id: String, basis: TrainingWeightBasis, sets: [TrainingSet], dates: [String:String]
@@ -98,9 +104,28 @@ public struct TrainingSeries: Identifiable, Sendable {
     }
     public func points(_ metric: TrainingMetric) -> [TrainingPoint] {
         let eligible = sets.compactMap { set -> TrainingPoint? in
-            let value: Double? = switch metric { case .weight: basis == .bodyweight ? nil : set.weight; case .reps: Double(set.reps); case .rpe: set.rpe; case .measuredOneRM: set.measuredOneRM }
+            let value: Double? = switch metric { case .weight: basis == .bodyweight ? nil : set.weight; case .reps: Double(set.reps); case .rpe: set.rpe; case .measuredOneRM: set.measuredOneRM; case .estimatedOneRM: set.estimatedOneRM }
             guard let value, let date = dates[set.id] else { return nil }; return TrainingPoint(id:set.id,date:date,value:value,set:set)
         }
         return Dictionary(grouping: eligible,by: \.date).values.compactMap { $0.max { ($0.value,$0.set.reps,$0.id) < ($1.value,$1.set.reps,$1.id) } }.sorted { ($0.date,$0.id) < ($1.date,$1.id) }
+    }
+    /// それまでの全期間の最高を上回った日の代表点。最初の記録は比較相手がないので自己ベストにしない。
+    public func personalBestIDs(_ metric: TrainingMetric) -> Set<String> {
+        guard [.estimatedOneRM, .weight, .measuredOneRM].contains(metric) else { return [] }
+        var best: Double?, ids = Set<String>()
+        for point in points(metric) { if let b = best, point.value > b { ids.insert(point.id) }; best = max(best ?? point.value, point.value) }
+        return ids
+    }
+    /// 前回の日の最大重量のセットだけを見る目安。全セットが同じ回数に届いていれば+2.5kg。計画mdが優先。
+    public func nextTarget(increment: Double = 2.5) -> TrainingNextTarget? {
+        guard basis == .standard, let last = sets.compactMap({ dates[$0.id] }).max() else { return nil }
+        let day = sets.filter { dates[$0.id] == last && $0.weight > 0 }
+        guard let top = day.map(\.weight).max() else { return nil }
+        let topSets = day.filter { $0.weight == top }, goal = topSets.map(\.reps).max()!
+        let reps = topSets.map { String($0.reps) }.joined(separator: "・"), w = top.formatted()
+        if topSets.count >= 2 && topSets.allSatisfy({ $0.reps >= goal }) {
+            return .init(weight: top + increment, reps: goal, raise: true, reason: "前回(\(last))は\(w)kgの全\(topSets.count)セットで\(goal)回に届きました。")
+        }
+        return .init(weight: top, reps: goal, raise: false, reason: "前回(\(last))は\(w)kgで\(reps)回。まず全セット\(goal)回を目標にします。")
     }
 }

@@ -113,7 +113,7 @@ struct PlanningDayCard: View {
         if let days=try? model.supplements().days.filter({$0.date==date && $0.isCounted}),!days.isEmpty {
           Text("サプリ込み · 予定\(days.filter {$0.state == .planned}.count)件／服用確認\(days.filter {$0.state == .confirmed}.count)件").font(.caption).foregroundStyle(.secondary)
         }
-        Text(goal.state == .frozen ? "凍結済み · 過去日の目標" : "固定目標＋手動調整 · 自動補正オフ").font(.caption).foregroundStyle(.secondary)
+        Text(goal.state == .frozen ? "確定済み · 過去日の目標" : "固定目標＋手動調整 · 自動補正オフ").font(.caption).foregroundStyle(.secondary)
       } else { Text("目標は未設定").foregroundStyle(.secondary) }
       let status = model.foodDay(date)?.status ?? .incomplete
       HStack {
@@ -131,21 +131,50 @@ struct PlanningDayCard: View {
 }
 struct GoalDetailPage: View {
   let model: PlanningScreenModel, date: String, consumed: GoalValues
+  private func pfc(_ label: String, _ value: Double?, _ color: Color) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 3) { Text(label).font(.headline).foregroundStyle(color); Text(foodNumber(value)).font(.title2.weight(.semibold)).foregroundStyle(color); Text("g").font(.subheadline).foregroundStyle(color) }
+      .fixedSize(horizontal: true, vertical: false)
+  }
   var body: some View {
     Page(title: "目標の内訳") {
-      Text(date).foregroundStyle(.secondary)
+      Text(mockDay(date)).foregroundStyle(.secondary)
       if let goal = try? model.goal(date) {
-        Card {
-          Text("基準 \(foodNumber(goal.base.kcal)) kcal").font(.title3.bold())
-          Text("P \(foodNumber(goal.base.protein)) / F \(foodNumber(goal.base.fat)) / C \(foodNumber(goal.base.carbohydrate)) g")
-          ForEach(goal.manual) { a in Text("\(a.reason) · \(a.delta.kcal.formatted()) kcal") }
-          Text("目標合計 \(foodNumber(goal.total.kcal)) kcal")
-          Text("\(goal.calculationVersion) · 設定版\(goal.ruleRevision)").font(.caption).foregroundStyle(.secondary)
-          HStack { Text(goal.state == .frozen ? "過去日の凍結値を保持しています" : "活動・期間の自動補正はオフです").font(.caption); MotionInfo(text: "固定目標と手動調整から計算しています。自動補正は本人が設定するまでオフです。") }
+        let manual = goal.manual.map(\.delta.kcal).reduce(0, +)
+        VStack(spacing: 12) {
+          Text("1日の目標摂取カロリー").font(.subheadline).foregroundStyle(.secondary)
+          MockFigure(value: foodNumber(goal.total.kcal), unit: "kcal", size: 46).accessibilityElement(children: .combine).accessibilityLabel("目標合計 \(foodNumber(goal.total.kcal)) kcal")
+          Divider()
+          ViewThatFits(in: .horizontal) {
+            HStack {
+              pfc("P", goal.total.protein ?? goal.base.protein, pfcProtein); Spacer()
+              pfc("F", goal.total.fat ?? goal.base.fat, pfcFat); Spacer()
+              pfc("C", goal.total.carbohydrate ?? goal.base.carbohydrate, pfcCarb)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+              pfc("P", goal.total.protein ?? goal.base.protein, pfcProtein)
+              pfc("F", goal.total.fat ?? goal.base.fat, pfcFat)
+              pfc("C", goal.total.carbohydrate ?? goal.base.carbohydrate, pfcCarb)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+          }.padding(.horizontal, 8)
+        }.frame(maxWidth: .infinity).padding(20).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+        MockRows {
+          MockRow(title: "基準", chevron: false) { Text("\(foodNumber(goal.base.kcal)) kcal") }
+          MockRow(title: "活動補正", chevron: false) { Text("0 kcal").foregroundStyle(.secondary) }
+          MockRow(title: "期間補正", chevron: false) { Text("0 kcal").foregroundStyle(.secondary) }
+          MockRow(title: "手動調整", chevron: false, last: true) { Text("\(manual.formatted()) kcal") }
         }
-        if goal.state != .frozen { NavigationLink("この日の手動調整") { ManualGoalEditor(model: model, date: date) } }
-      } else { Card { Text("目標が未設定です。記録はそのまま使えます。") } }
-      NavigationLink("適用日から固定目標を設定") { GoalRuleEditor(model: model, date: date) }
+        ForEach(goal.manual) { a in Text("手動調整：\(a.reason)（\(a.delta.kcal.formatted()) kcal）").font(.caption).foregroundStyle(.secondary) }
+        if goal.state == .frozen { Text("この日の目標は確定済みです。後から目標を変えても、この日の値は変わりません。").font(.caption).foregroundStyle(.secondary) }
+        Text("目標設定").font(.headline).padding(.top, 6)
+        MockRows {
+          NavigationLink { GoalRuleEditor(model: model, date: date) } label: { MockRow(title: "固定目標", subtitle: "カロリー・PFCを、適用日から固定で設定します") }.buttonStyle(.plain)
+          if goal.state != .frozen { NavigationLink { ManualGoalEditor(model: model, date: date) } label: { MockRow(title: "この日の手動調整", subtitle: "この日だけ目標を増減します") }.buttonStyle(.plain) }
+          MockRow(title: "自動補正", subtitle: "活動量・期間による自動補正はオフです（係数を決めるまで）", chevron: false, last: true) { Toggle("", isOn: .constant(false)).labelsHidden().disabled(true).accessibilityLabel("自動補正（オフ）") }
+        }
+      } else {
+        Card { Text("目標が未設定です。記録はそのまま使えます。") }
+        MockRows { NavigationLink { GoalRuleEditor(model: model, date: date) } label: { MockRow(title: "固定目標を設定", subtitle: "適用日から、カロリー・PFCを固定で設定します", last: true) }.buttonStyle(.plain) }
+      }
       PlanningQueueCard(model: model)
     }
   }
@@ -172,7 +201,7 @@ struct GoalRuleEditor: View {
           let values = try GoalValues(kcal: planningNumber(kcal), protein: planningNumber(protein), fat: planningNumber(fat), carbohydrate: planningNumber(carbohydrate))
           model.saveGoal(from: FoodDates.text(date), phase: phase, values: values); saved=model.message.hasPrefix("端末に保存"); error=saved ? "" : model.message; if saved { Haptics.emit(.success) }
         } catch { self.error = error.localizedDescription }
-      } label: { MotionSaveLabel(title: "目標を端末へ保存", saved: saved) }.buttonStyle(.borderedProminent).accessibilityLabel(saved ? "目標を保存しました" : "目標を端末へ保存")
+      } label: { MotionSaveLabel(title: "目標を端末へ保存", saved: saved) }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: .systemBackground)).accessibilityLabel(saved ? "目標を保存しました" : "目標を端末へ保存")
       if !error.isEmpty { Text(error) }
     }.navigationTitle("固定目標の設定")
   }
@@ -196,7 +225,7 @@ private struct ManualGoalEditor: View {
             protein: planningNumber(protein) ?? 0, fat: planningNumber(fat) ?? 0, carbohydrate: planningNumber(carbohydrate) ?? 0))
           message = model.message
         } catch { message = error.localizedDescription }
-      }.buttonStyle(.borderedProminent)
+      }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: .systemBackground))
       if !message.isEmpty { Text(message) }
     }.navigationTitle("手動調整")
   }
@@ -216,11 +245,9 @@ struct SupplementPage: View {
             Text("\(foodNumber(day.amount)) \(day.unit)")
             Text(day.state == .planned ? "予定から自動計上・服用確認なし" : day.state == .confirmed ? "服用確認済み" : "この日は除外")
               .font(.caption).foregroundStyle(.secondary)
-            HStack {
-              Button("この日だけ量を変更") { editing = day }
-              Button(day.state == .excluded ? "服用を報告" : "飲まなかった") {
-                model.change(day, state: day.state == .excluded ? .confirmed : .excluded)
-              }
+            ViewThatFits(in: .horizontal) {
+              HStack { dayActions(day) }.fixedSize(horizontal: true, vertical: false)
+              VStack(alignment: .leading) { dayActions(day) }
             }.buttonStyle(.bordered)
           }
         }
@@ -229,14 +256,20 @@ struct SupplementPage: View {
             !ledger.plans.contains { $0.planID == p.planID && $0.revision > p.revision && $0.effectiveFrom <= date }
         }) { p in
           Card {
-            Text(ledger.products.first { $0.id == p.productVersionID }?.name ?? "商品版を確認")
-            Text("日量 \(foodNumber(p.dailyAmount)) · 適用 \(p.effectiveFrom)〜\(p.effectiveThrough ?? "継続") · 予定版\(p.revision)").font(.caption)
+            Text(ledger.products.first { $0.id == p.productVersionID }?.name ?? "商品情報を確認")
+            Text("日量 \(foodNumber(p.dailyAmount)) · 適用 \(p.effectiveFrom)〜\(p.effectiveThrough ?? "継続")").font(.caption)
             Text(p.autoCount ? "自動計上オン" : "自動計上オフ").font(.caption).foregroundStyle(.secondary)
           }
         }
       }
       PlanningQueueCard(model: model)
     }.sheet(item: $editing) { SupplementAmountEditor(model: model, day: $0) }
+  }
+  @ViewBuilder private func dayActions(_ day: SupplementDay) -> some View {
+    Button("この日だけ量を変更") { editing = day }
+    Button(day.state == .excluded ? "服用を報告" : "飲まなかった") {
+      model.change(day, state: day.state == .excluded ? .confirmed : .excluded)
+    }
   }
 }
 private struct SupplementAmountEditor: View {
@@ -253,7 +286,7 @@ private struct SupplementAmountEditor: View {
           do { guard let value = try planningNumber(amount) else { throw SupplementFailure.invalidValue }
             model.change(day, amount: value, state: day.state); error = model.message
           } catch { self.error = error.localizedDescription }
-        }.buttonStyle(.borderedProminent)
+        }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: .systemBackground))
         Text(error)
       }.navigationTitle("量の例外")
     }

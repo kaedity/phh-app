@@ -205,14 +205,26 @@ struct MotionRowMenu<Content: View>: View {
         VStack(alignment: .trailing, spacing: 8) {
             Button { withAnimation(Motion.animation(reduceMotion: policy.reduced)) { open.toggle() }; Haptics.emit(.lightPress) } label: {
                 Image(systemName: open ? "xmark" : "ellipsis").frame(width: 44, height: 44)
-                    .background { Circle().fill(pine.opacity(0.08)).matchedGeometryEffect(id: "menu", in: shape, isSource: !open) }
+                    .contentShape(Rectangle())
+                    .background {
+                        if !open { Circle().fill(pine.opacity(0.08)).matchedGeometryEffect(id: "menu", in: shape).allowsHitTesting(false) }
+                    }
             }.buttonStyle(.plain).accessibilityLabel(open ? "メニューを閉じる" : title + "のメニュー")
             if open {
                 VStack(alignment: .leading, spacing: 12) { content }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                    .background { RoundedRectangle(cornerRadius: 18).fill(pine.opacity(0.08)).matchedGeometryEffect(id: "menu", in: shape, isSource: true) }
+                    .background { RoundedRectangle(cornerRadius: 18).fill(pine.opacity(0.08)).matchedGeometryEffect(id: "menu", in: shape, isSource: true).allowsHitTesting(false) }
                     .transition(.opacity)
             }
         }
+    }
+}
+struct MotionMenuAction: View {
+    let title: String
+    var role: ButtonRole? = nil
+    let run: () -> Void
+    var body: some View {
+        Button(role: role, action: run) { Text(title).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle()) }
+            .buttonStyle(.borderless)
     }
 }
 struct MotionIntakeRing: View {

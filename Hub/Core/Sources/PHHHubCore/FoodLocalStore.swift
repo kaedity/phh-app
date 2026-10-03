@@ -4,6 +4,8 @@ public enum FoodSendState: String, Codable, Sendable { case queued, sending, nee
 public struct FoodPendingOperation: Codable, Equatable, Identifiable, Sendable {
   public let id: String, expectedRevision: Int, meal: FoodMeal
   public var state: FoodSendState, attempted: Bool, undoRequested: Bool, error: String?
+  public var undoReplacement: FoodMeal?
+  public var undoOperationID: String?
   public init(id: String = UUID().uuidString, expectedRevision: Int, meal: FoodMeal) throws {
     self.id = id
     self.expectedRevision = expectedRevision
@@ -12,6 +14,7 @@ public struct FoodPendingOperation: Codable, Equatable, Identifiable, Sendable {
     attempted = false
     undoRequested = false
     error = nil
+    undoReplacement = nil; undoOperationID = nil
     try validate()
   }
   public func validate() throws {
@@ -20,6 +23,12 @@ public struct FoodPendingOperation: Codable, Equatable, Identifiable, Sendable {
     guard expectedRevision >= 0, meal.revision == expectedRevision + 1,
       expectedRevision > 0 || !meal.removed
     else { throw FoodFailure.invalidValue }
+    if let undoReplacement {
+      try undoReplacement.validate()
+      guard undoRequested, undoReplacement.id == meal.id, undoReplacement.revision == meal.revision+1,
+        let undoOperationID, undoOperationID != id else { throw FoodFailure.invalidValue }
+      try FoodRules.id(undoOperationID)
+    }
   }
 }
 /// P4の端末保存・送信順の準備用。Google未配置の間に本番のOutboxと混ぜない別契約です。
@@ -143,7 +152,9 @@ public struct FoodLocalState: Codable, Equatable, Sendable {
       let op = next.pending.remove(at: i)
       next.confirmed.removeAll { $0.id == confirmed.id }
       next.confirmed.append(confirmed)
-      if op.undoRequested && !confirmed.removed {
+      if let restoration = op.undoReplacement, let undoID = op.undoOperationID {
+        next.pending.append(try .init(id: undoID, expectedRevision: confirmed.revision, meal: restoration))
+      } else if op.undoRequested && !confirmed.removed {
         next.pending.append(
           try .init(expectedRevision: confirmed.revision, meal: confirmed.edited(remove: true)))
       }
@@ -176,6 +187,21 @@ public struct FoodLocalState: Codable, Equatable, Sendable {
       } else {
         next.pending[i].undoRequested = true
       }
+    }
+  }
+  public func undoChange(_ change: FoodUndoChange, at: Date = .now) throws {
+    try change.validate(); guard change.available(at: at) else { throw FoodFailure.invalidValue }
+    if state.pending.contains(where: { $0.id == change.undoID }) { return }
+    if let index = state.pending.firstIndex(where: { $0.id == change.operationID }) {
+      guard state.pending[index].meal == change.after, state.pending[index].state != .needsReview else { throw FoodFailure.pendingEdit }
+      let restored = try change.restoration(current: state.pending[index].meal)
+      try mutate { next in
+        if !next.pending[index].attempted { next.pending.remove(at: index) }
+        else { next.pending[index].undoRequested=true; next.pending[index].undoReplacement=restored; next.pending[index].undoOperationID=change.undoID }
+      }
+    } else {
+      guard let current = state.confirmed.first(where: { $0.id == change.after.id }) else { throw FoodFailure.missingReference }
+      try enqueue(change.restoration(current: current), operationID: change.undoID)
     }
   }
   public func discardRejected(_ id: String) throws {

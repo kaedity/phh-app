@@ -33,7 +33,7 @@ function hubAggregate_(store,state,date,now) {
 function hubOperationResult_(store,id) {const op=store.get('Operations',id); if(!op)return {operation_id:id,status:'not_found',retryable:true};const es=store.find('OperationEntities','operation_id',id);return {environment:store.config.environment,operation_id:id,status:op.status,error_code:op.error_code,entity_ids:es.map(e=>e.entity_id),revisions:es.map(e=>e.revision),committed_at:op.committed_at,change_number:op.change_number,retryable:false};}
 function hubSaveOperation_(store,id,hash,actor,action,record,error,now) {
   store.put('Operations',{id,content_hash:hash,actor,action,status:error?'rejected':'committed',error_code:error || null,committed_at:new Date(now).toISOString(),change_number:hubSetting_(store,'next_change',0)});
-  if(record)store.put('OperationEntities',{id:hubId_(id+'|'+record.id),operation_id:id,table_name:record.type==='meal'?'Meals':record.type==='set'?'TrainingSets':record.type==='session'?'TrainingSessions':record.type==='cycle'?'TrainingCycles':['FoodVersions','Categories','Presets','GoalRules','DailyGoals','FoodDays','SupplementProducts','SupplementPlans','SupplementDays','HealthBatches'].includes(record.type)?record.type:'TrainingNotes',entity_id:record.id,revision:record.revision});
+  if(record)store.put('OperationEntities',{id:hubId_(id+'|'+record.id),operation_id:id,table_name:record.type==='meal'?'Meals':record.type==='set'?'TrainingSets':record.type==='session'?'TrainingSessions':record.type==='cycle'?'TrainingCycles':['FoodVersions','Categories','Presets','GoalRules','DailyGoals','FoodDays','SupplementProducts','SupplementPlans','SupplementDays','HealthBatches','WaterIntakes'].includes(record.type)?record.type:'TrainingNotes',entity_id:record.id,revision:record.revision});
   return hubOperationResult_(store,id);
 }
 function hubValidateMeal_(r) {
@@ -43,6 +43,7 @@ function hubValidateMeal_(r) {
   for(const k of ['kcal','protein_g','fat_g','carbohydrate_g'])ensure_(r[k]===null || Number.isFinite(r[k]) && r[k]>=0 && r[k]<=10000,'INVALID_VALUE');
 }
 function hubApplyApp_(store,op,now) {
+  if(typeof hubHydrationEnabled_==='function' && hubHydrationEnabled_() && ['confirm_water','update_water','remove_water'].includes(op?.action))return hubHydrationApply_(store,op,now);
   if(typeof hubHealthEnabled_==='function' && hubHealthEnabled_() && op?.action==='save_health_delta')return hubHealthApply_(store,op,now);
   if(typeof hubP5Enabled_==='function' && hubP5Enabled_() && hubP5Actions_(HUB_PLANNING_LAYOUT_)[op?.action])return hubP5Apply_(store,op,now);
   if(typeof hubP4Enabled_==='function' && hubP4Enabled_() && hubP4CatalogTable_(op?.action))return hubP4ApplyCatalog_(store,op,now);
@@ -139,6 +140,7 @@ function hubChanges_(store,q) {
   if(typeof hubP4Enabled_==='function' && hubP4Enabled_())out.food_contract=1;
   if(typeof hubP5Enabled_==='function' && hubP5Enabled_())out.planning_contract=1;
   if(typeof hubHealthEnabled_==='function' && hubHealthEnabled_())out.health_contract=1;
+  if(typeof hubHydrationEnabled_==='function' && hubHydrationEnabled_())out.hydration_contract=1;
   while(Utilities.newBlob(JSON.stringify(out)).getBytes().length>200000 && out.changes.length>1) {out.changes.pop();out.next_cursor=out.changes[out.changes.length-1].change.change_number;out.has_more=true;}
   ensure_(Utilities.newBlob(JSON.stringify(out)).getBytes().length<=200000,'RESPONSE_TOO_LARGE');return out;
 }

@@ -17,9 +17,9 @@ struct FoodWireTests {
         try changed.validate();#expect(changed.action=="update_food_meal");#expect(changed.entity_id==wire.entity_id);#expect(changed.expected_revision==1)
         let removal=try FoodWireOperation(.init(expectedRevision:2,meal:meal.edited(remove:true)),environment:wire.environment);try removal.validate();#expect(removal.action=="remove_food_meal")
     }
-    @Test func decodedRealDataAndDraftAreRejectedAtWireBoundary() throws {
+    @Test func decodedDraftAndInvalidVersionAreRejectedAtWireBoundary() throws {
         let wire=try fixture();var json=try JSONSerialization.jsonObject(with:JSONEncoder().encode(wire)) as! [String:Any]
-        for (key,value) in [("synthetic",false as Any),("approval_state","draft" as Any),("expected_revision",4 as Any),("action","confirm_meal" as Any)] {var bad=json;bad[key]=value;let decoded=try JSONDecoder().decode(FoodWireOperation.self,from:JSONSerialization.data(withJSONObject:bad));#expect(throws:FoodFailure.invalidValue){try decoded.validate()}}
+        for (key,value) in [("approval_state","draft" as Any),("expected_revision",4 as Any),("action","confirm_meal" as Any)] {var bad=json;bad[key]=value;let decoded=try JSONDecoder().decode(FoodWireOperation.self,from:JSONSerialization.data(withJSONObject:bad));#expect(throws:FoodFailure.invalidValue){try decoded.validate()}}
         json["environment"]="other";let bad=try JSONDecoder().decode(FoodWireOperation.self,from:JSONSerialization.data(withJSONObject:json));#expect(throws:FoodFailure.invalidValue){try bad.validate()}
     }
     @Test @MainActor func commonOutboxKeepsSnapshotAndOperationIDAcrossDatabaseRestart() throws {

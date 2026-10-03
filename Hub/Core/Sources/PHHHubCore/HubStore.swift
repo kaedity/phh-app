@@ -74,6 +74,7 @@ import CoreData
     private func atomic(_ work: () throws -> Void) throws { do { try work(); try context.save() } catch { context.rollback(); throw error } }
     private func meta(_ key: String) throws -> String? { try find("Meta", key)?.value(forKey: "value") as? String }
     private func setMeta(_ key: String, _ value: String) throws { try object("Meta", key).setValue(value, forKey: "value") }
+    public var hydrationContract: Int { get throws { Int(try meta("hydration_contract") ?? "0") ?? 0 } }
     public var healthContract: Int { get throws { Int(try meta("health_contract") ?? "0") ?? 0 } }
     public var planningContract: Int { get throws { Int(try meta("planning_contract") ?? "0") ?? 0 } }
     public var foodContract: Int { get throws { Int(try meta("food_contract") ?? "0") ?? 0 } }
@@ -131,10 +132,11 @@ import CoreData
         let sequence=(Int(try meta("sequence") ?? "0") ?? 0)+1,row=try object("Outbox",operation.id)
         for (key,value) in ["payload":payload,"state":PendingState.queued.rawValue,"message":"端末に保存・同期待ち","retry":0.0,"attempts":0,"sequence":sequence] as [String:Any] {row.setValue(value,forKey:key)}
         try setMeta("sequence",String(sequence))
+        if operation.foodMeal != nil {try setMeta("food_origin:"+operation.entity_id,operation.id+"|"+(operation.synthetic ? "1":"0"))}
     }
     public func enqueue(_ operation:HubOperation) throws { try enqueueBatch([operation]) }
     public func enqueueBatch(_ operations:[HubOperation]) throws {
-        for op in operations { if op.requiresFoodContract { guard try foodContract==1 else {throw HubError.configuration} };try op.validate() }
+        for op in operations { if op.requiresHydrationContract { guard try hydrationContract==1 else {throw HubError.configuration} };if op.requiresFoodContract { guard try foodContract==1 else {throw HubError.configuration} };try op.validate() }
         try atomic { for op in operations { try insertQueued(op) } }
     }
     internal func cancelUnsentPlanning(_ id: String) throws {
@@ -145,7 +147,64 @@ import CoreData
     public func markAttempted(_ id:String) throws {
         try atomic { guard let row=try find("Outbox",id) else {throw HubError.invalidOperation};row.setValue((row.value(forKey:"attempts") as? Int ?? 0)+1,forKey:"attempts") }
     }
-    public func foodUndoRequested(_ id:String) throws -> Bool { try meta("food_undo:"+id)=="1" }
+    public func foodUndoRequested(_ id:String) throws -> Bool { try meta("food_undo:"+id)=="1" || meta("food_restore:"+id) != nil }
+    public func foodUndoReplacement(_ id: String) throws -> FoodMeal? {
+        try foodUndoRestoration(id)?.foodMeal
+    }
+    public func foodUndoRestoration(_ id: String) throws -> HubOperation? {
+        guard let text = try meta("food_restore:"+id) else { return nil }
+        let operation = try JSONDecoder().decode(HubOperation.self, from: Data(text.utf8)); try operation.validate()
+        guard operation.foodMeal != nil else { throw HubError.invalidResponse }; return operation
+    }
+    public func hydrationUndoRestoration(_ id: String) throws -> HubOperation? {
+        guard let text=try meta("water_restore:"+id) else {return nil}
+        let op=try JSONDecoder().decode(HubOperation.self,from:Data(text.utf8));try op.validate()
+        guard op.hydration != nil else {throw HubError.invalidResponse};return op
+    }
+    public func undoHydrationChange(_ change: HydrationUndoChange, at: Date = .now, synthetic: Bool = false) throws {
+        guard at <= change.expiresAt else {throw HubError.invalidOperation}
+        let op=try change.restoration(current:change.after).operation(id:change.undoID,synthetic:synthetic),outbox=try pending()
+        if outbox.contains(where:{$0.id==change.undoID}) {return}
+        if let original=outbox.first(where:{$0.id==change.operationID}) {
+            guard original.operation.hydration == change.after,original.state == .queued || original.state == .authentication else {throw HubError.invalidOperation}
+            try atomic {
+                if original.attempts==0 && original.state == .queued {if let row=try find("Outbox",original.id){context.delete(row)}}
+                else {try setMeta("water_restore:"+original.id,String(decoding:encoder.encode(op),as:UTF8.self))}
+            }
+        } else {
+            guard outbox.allSatisfy({$0.operation.entity_id != change.after.id}),let current=try HydrationRows.records(rows(table:"WaterIntakes")).first(where:{$0.id==change.after.id}) else {throw HubError.invalidOperation}
+            _=try change.restoration(current:current);try enqueue(op)
+        }
+    }
+    private func foodOriginalSynthetic(entityID: String, operationID: String, fallback: Bool) throws -> Bool {
+        guard let text = try meta("food_origin:"+entityID) else {return fallback}
+        let parts = text.split(separator:"|",omittingEmptySubsequences:false)
+        guard parts.count == 2, UUID(uuidString:String(parts[0])) != nil, ["0","1"].contains(String(parts[1])) else {throw HubError.invalidResponse}
+        return String(parts[0]) == operationID ? parts[1] == "1" : fallback
+    }
+    public func undoFoodChange(_ change: FoodUndoChange, at: Date = .now, synthetic: Bool = true) throws {
+        try change.validate(); guard change.available(at: at) else { throw FoodFailure.invalidValue }
+        let outbox = try pending()
+        if outbox.contains(where: { $0.id == change.undoID }) { return }
+        let original = outbox.first(where: { $0.id == change.operationID })
+        let marker = try original?.operation.synthetic ?? foodOriginalSynthetic(entityID:change.after.id,operationID:change.operationID,fallback:synthetic)
+        let restoration = try change.restoration(current: change.after)
+        let op = try FoodWireOperation(.init(id: change.undoID, expectedRevision: change.after.revision, meal: restoration), environment: hubEnvironment, synthetic: marker).hubOperation()
+        if let original {
+            guard original.operation.foodMeal == change.after,
+                original.state == .queued || original.state == .authentication else { throw FoodFailure.pendingEdit }
+            try atomic {
+                if original.attempts == 0 && original.state == .queued { if let row = try find("Outbox", original.id) { context.delete(row) } }
+                else { try setMeta("food_restore:"+original.id, String(decoding: encoder.encode(op), as: UTF8.self)) }
+            }
+        } else {
+            guard outbox.allSatisfy({ $0.operation.entity_id != change.after.id }) else { throw FoodFailure.pendingEdit }
+            let mealRows = try ["Meals", "MealItems", "IntakeNutrients"].flatMap { try rows(table: $0) }
+            guard let current = try FoodSnapshotReader.meals(mealRows).first(where: { $0.id == change.after.id }) else { throw FoodFailure.missingReference }
+            _ = try change.restoration(current: current)
+            try enqueue(op)
+        }
+    }
     public func undoFoodAddition(_ operation:HubOperation) throws {
         try operation.validate();guard let meal=operation.foodMeal,operation.expected_revision==0 else {throw HubError.invalidOperation}
         if let pending=try pending().first(where:{$0.id==operation.id}) {
@@ -157,15 +216,26 @@ import CoreData
         } else {
             guard try pending().allSatisfy({$0.operation.entity_id != meal.id}) else {throw FoodFailure.pendingEdit}
             let current=try FoodSnapshotReader.meals(rows()).first {$0.id==meal.id} ?? meal
-            if !current.removed {try enqueue(FoodWireOperation(.init(expectedRevision:current.revision,meal:current.edited(remove:true)),environment:hubEnvironment).hubOperation())}
+            let marker = try foodOriginalSynthetic(entityID:meal.id,operationID:operation.id,fallback:operation.synthetic)
+            if !current.removed {try enqueue(FoodWireOperation(.init(expectedRevision:current.revision,meal:current.edited(remove:true)),environment:hubEnvironment,synthetic:marker).hubOperation())}
         }
     }
     public func finish(_ receipt:Receipt,operation:HubOperation) throws {
         try receipt.validate(for:operation);guard receipt.status=="committed" else {throw HubError.invalidResponse}
         try atomic {
             guard let row=try find("Outbox",operation.id) else {return}
-            if try meta("food_undo:"+operation.id)=="1",let meal=operation.foodMeal,!meal.removed {
-                try insertQueued(FoodWireOperation(.init(expectedRevision:meal.revision,meal:meal.edited(remove:true)),environment:hubEnvironment).hubOperation())
+            if operation.foodMeal != nil {try setMeta("food_origin:"+operation.entity_id,operation.id+"|"+(operation.synthetic ? "1":"0"))}
+            if let restored=try hydrationUndoRestoration(operation.id) {
+                guard restored.entity_id==operation.entity_id,restored.expected_revision==operation.hydration?.revision else {throw HubError.invalidOperation}
+                try insertQueued(restored)
+                if let marker=try find("Meta","water_restore:"+operation.id){context.delete(marker)}
+            } else if let text = try meta("food_restore:"+operation.id) {
+                let restored = try JSONDecoder().decode(HubOperation.self, from: Data(text.utf8)); try restored.validate()
+                guard restored.entity_id == operation.entity_id, restored.expected_revision == operation.foodMeal?.revision, restored.synthetic == operation.synthetic else { throw HubError.invalidOperation }
+                try insertQueued(restored)
+                if let marker = try find("Meta", "food_restore:"+operation.id) { context.delete(marker) }
+            } else if try meta("food_undo:"+operation.id)=="1",let meal=operation.foodMeal,!meal.removed {
+                try insertQueued(FoodWireOperation(.init(expectedRevision:meal.revision,meal:meal.edited(remove:true)),environment:hubEnvironment,synthetic:operation.synthetic).hubOperation())
                 if let marker=try find("Meta","food_undo:"+operation.id) {context.delete(marker)}
             }
             context.delete(row)
@@ -191,6 +261,7 @@ import CoreData
     }
     public func apply(_ page: Delta) throws {
         let start = try cursor
+        guard page.hydration_contract == nil || page.hydration_contract == 1 else {throw HubError.invalidResponse}
         guard page.health_contract == nil || page.health_contract == 1 else { throw HubError.invalidResponse }
         guard page.planning_contract == nil || page.planning_contract == 1 else { throw HubError.invalidResponse }
         guard page.food_contract == nil || page.food_contract == 1 else { throw HubError.invalidResponse }
@@ -203,6 +274,7 @@ import CoreData
             guard c.change_number == start + i + 1, c.entity_id == row.entityID, c.revision == row.revision, c.indexed_revision > 0, c.indexed_revision <= c.revision,
                   c.removed == !row.active, c.local_date == nil || Schema.validDate(c.local_date!) else { throw HubError.invalidResponse }
             try Schema.validate(row)
+            if row.table=="WaterIntakes" {guard page.hydration_contract==1,c.local_date==row.values["local_date"]?.text else {throw HubError.invalidResponse};_ = try HydrationRows.records([row])}
             if PlanningRows.tables.contains(row.table) { guard page.planning_contract == 1 else { throw HubError.invalidResponse } }
             if Set(item.record.keys) == Set(Schema.foodP4.tables[row.table]?.columns.map(\.name) ?? []),
                Schema.trainingP3.tables[row.table]?.columns.map(\.name) != Schema.foodP4.tables[row.table]?.columns.map(\.name) {
@@ -217,7 +289,7 @@ import CoreData
                 if old > c.revision { continue }
                 row.setValue(c.table_name, forKey: "table"); row.setValue(c.local_date ?? "", forKey: "date"); row.setValue(payload, forKey: "payload"); row.setValue(c.revision, forKey: "revision")
             }
-            try setMeta("health_contract", String(page.health_contract ?? 0)); try setMeta("planning_contract", String(page.planning_contract ?? 0)); try setMeta("cursor", String(page.next_cursor)); try setMeta("training_contract",String(page.training_contract ?? 0)); try setMeta("food_contract",String(page.food_contract ?? 0))
+            try setMeta("hydration_contract",String(page.hydration_contract ?? 0));try setMeta("health_contract", String(page.health_contract ?? 0)); try setMeta("planning_contract", String(page.planning_contract ?? 0)); try setMeta("cursor", String(page.next_cursor)); try setMeta("training_contract",String(page.training_contract ?? 0)); try setMeta("food_contract",String(page.food_contract ?? 0))
         }
     }
 }

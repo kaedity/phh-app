@@ -1,0 +1,130 @@
+import SwiftUI
+import PHHHubCore
+
+struct HubMockPage<Content: View>: View {
+  var title = ""
+  var showNavigation = false
+  @ViewBuilder var content: Content
+  var body: some View {
+    ScrollView { VStack(alignment: .leading, spacing: 14) { content }.padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 128) }
+      .background(canvas).navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+      .toolbar(showNavigation ? .visible : .hidden, for: .navigationBar)
+  }
+}
+struct HubMockCard<Content: View>: View {
+  @ViewBuilder var content: Content
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) { content }.frame(maxWidth: .infinity, alignment: .leading)
+      .padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+      .overlay(RoundedRectangle(cornerRadius: 16).stroke(pine.opacity(0.04)))
+  }
+}
+struct HubMacroProgress: View {
+  let title: String, symbol: String, value: Double?, target: Double?, color: Color
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(title).font(.caption2).foregroundStyle(.secondary)
+      HStack(alignment: .firstTextBaseline, spacing: 2) {
+        Text(symbol).font(.caption.bold()).foregroundStyle(color)
+        Text(foodNumber(value)).font(.headline)
+        if let target { Text("/\(foodNumber(target))g").font(.caption2).foregroundStyle(.secondary) }
+        else { Text("g").font(.caption2).foregroundStyle(.secondary) }
+      }.lineLimit(1).minimumScaleFactor(0.7)
+      GeometryReader { size in
+        ZStack(alignment: .leading) {
+          Capsule().fill(color.opacity(0.1))
+          Capsule().fill(color).frame(width: size.size.width * CGFloat(value.flatMap { n in target.flatMap { $0 > 0 ? min(1,max(0,n/$0)) : nil } } ?? 0))
+        }
+      }.frame(height: 5)
+      if let target {
+        Text(value.map { $0 <= target ? "残り \(foodNumber(target-$0)) g" : "目標より＋\(foodNumber($0-target)) g" } ?? "残り — g").font(.caption2)
+      } else { Text("目標未設定").font(.caption2) }
+    }.frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+struct HubSettingsRow: View {
+  let title: String, subtitle: String, symbol: String
+  var body: some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol).font(.title3).foregroundStyle(pine).frame(width: 28)
+      VStack(alignment: .leading, spacing: 3) { Text(title).font(.subheadline.bold()).foregroundStyle(.primary); Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+      Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+    }.frame(minHeight: 36).contentShape(Rectangle())
+  }
+}
+
+struct HubHealthTiles: View {
+  let model: HubModel, screen: HealthScreenModel
+  private var sleep: Double? {
+    model.autoSleepDeliveries.filter { $0.targetDate == screen.date && $0.dictionary == .timeAsleep }.max { $0.receivedAt < $1.receivedAt }?.normalization.record?.actualSleepSeconds ?? screen.currentSleep?.seconds
+  }
+  private var sleepText: String { guard let sleep else { return "—" }; let minutes=Int(sleep/60); return "\(minutes/60)時間\(minutes%60)分" }
+  var body: some View {
+    LazyVGrid(columns: [.init(.flexible()),.init(.flexible())], spacing: 10) {
+      NavigationLink { HealthWeightPage(screen:screen).toolbar(.visible, for:.navigationBar) } label: { tile("最新体重", value: foodNumber(screen.latestWeight?.value), unit:"kg", symbol:"scalemass.fill", color:pine) }.accessibilityIdentifier("health-weight-link")
+      detailLink { tile("睡眠", value:sleepText, unit:"", symbol:"moon.fill", color:.gray) }
+      detailLink { tile("歩数", value:foodNumber(screen.dailyStatistics[.stepCount]?.value), unit:"歩", symbol:"shoeprints.fill", color:pine) }
+      detailLink { tile("活動", value:foodNumber(screen.dailyStatistics[.activeEnergyBurned]?.value), unit:"kcal", symbol:"flame.fill", color:.orange) }
+    }.buttonStyle(.plain)
+  }
+  private func detailLink<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    NavigationLink { HealthDetailPage(screen:screen, autoSleep:model.autoSleepDeliveries, readEnabled:model.healthReadEnabled, readPrepared:model.healthReadPrepared, connect:{await model.connectHealth()},refresh:{await model.catchUpHealth()}).toolbar(.visible,for:.navigationBar) } label: { content() }
+  }
+  private func tile(_ title: String, value: String, unit: String, symbol: String, color: Color) -> some View {
+    HStack(alignment:.top,spacing:8) {
+        Image(systemName:symbol).foregroundStyle(color)
+        VStack(alignment:.leading,spacing:4) { Text(title).font(.caption).foregroundStyle(.secondary); MockFigure(value:value,unit:unit,size:21) }
+        Spacer(minLength:0); Image(systemName:"chevron.right").font(.caption2).foregroundStyle(.secondary)
+      }.padding(12).frame(maxWidth:.infinity,alignment:.leading).background(.background,in:RoundedRectangle(cornerRadius:14))
+  }
+}
+
+
+struct HubMockTabBar: View {
+  @Binding var selection: String
+  private let tabs = [("home","ホーム","house"),("food","食事","fork.knife"),("other","その他","ellipsis")]
+  var body: some View {
+    VStack(spacing:0) {
+      Rectangle().fill(pine.opacity(0.08)).frame(height:0.5)
+      HStack(spacing:0) {
+        ForEach(tabs, id: \.0) { key,title,symbol in
+          Button { Haptics.emit(.selection); selection=key } label: {
+            VStack(spacing:4) { Image(systemName:key == "home" && selection == key ? "house.fill" : symbol).font(.system(size:21)); Text(title).font(.system(size:10,weight:selection == key ? .semibold : .regular)) }
+              .foregroundStyle(selection == key ? pine : Color.secondary).frame(maxWidth:.infinity,minHeight:48)
+          }.buttonStyle(.plain).accessibilityLabel(title).accessibilityIdentifier("hub-tab-"+key).accessibilityAddTraits(selection == key ? .isSelected : [])
+        }
+      }.padding(.horizontal,18).padding(.top,5)
+    }.background(Color(uiColor:.systemBackground).ignoresSafeArea(edges:.bottom))
+  }
+}
+
+struct HubUnknownNutrientsHelp: View {
+  @State private var open = false
+  var body: some View {
+    Button("一部不明") { open=true }.frame(minHeight:32).font(.caption2).foregroundStyle(.secondary).buttonStyle(.plain)
+      .accessibilityIdentifier("nutrition-unknown-help")
+      .popover(isPresented:$open) {
+        VStack(alignment:.leading,spacing:12) {
+          Text("栄養値がわからない食品を含みます。数字は、わかっている分の合計です。不明な値を0として保存しません。").font(.subheadline)
+          Button("閉じる") { open=false }.accessibilityLabel("不明な値の説明を閉じる")
+        }.padding(20).frame(maxWidth:280).foregroundStyle(.primary).presentationCompactAdaptation(.popover)
+      }
+  }
+}
+struct HubMealMacroLine: View {
+  let items: [FoodItemSnapshot]
+  var body: some View {
+    let total=FoodTotal(items:items)
+    HStack(spacing:12) {
+      Text("P " + foodNumber(items.allSatisfy { $0.nutrients.protein == nil } ? nil : total.known[.protein])).foregroundStyle(pfcProtein)
+      Text("F " + foodNumber(items.allSatisfy { $0.nutrients.fat == nil } ? nil : total.known[.fat])).foregroundStyle(pfcFat)
+      Text("C " + foodNumber(items.allSatisfy { $0.nutrients.carbohydrate == nil } ? nil : total.known[.carbohydrate])).foregroundStyle(pfcCarb)
+      if total.missing.values.contains(where: { $0 > 0 }) { HubUnknownNutrientsHelp() }
+    }.font(.caption).lineLimit(1).minimumScaleFactor(0.7)
+  }
+}
+
+func hubFoodEnergy(_ items: [FoodItemSnapshot]) -> String {
+  guard !items.isEmpty else { return "0" }
+  return items.allSatisfy { $0.nutrients.kcal == nil } ? "—" : foodNumber(FoodTotal(items:items).known[.kcal])
+}

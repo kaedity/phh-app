@@ -45,6 +45,7 @@ import Foundation
                     if next.operation.requiresHealthContract, try !store.canSendHealth(next.operation) { continue }
                     guard current.state == .queued, forceQueued || current.retryAt <= now else { break queueBatches }
                     // 古いAPIへのP4送信を止め、差分取得で対応状況を確認します。
+                    if next.operation.requiresHydrationContract, try store.hydrationContract != 1 {break queueBatches}
                     if next.operation.requiresPlanningContract, try store.planningContract != 1 { break queueBatches }
                     if next.operation.requiresFoodContract, try store.foodContract != 1 { break queueBatches }
                     if next.operation.requiresHealthContract, try store.healthContract != 1 { break queueBatches }

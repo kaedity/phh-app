@@ -128,3 +128,37 @@ struct TrainingTests {
     }
 
 }
+
+struct TrainingEstimateTests {
+    let base = TrainingTests()
+    @Test func epleyAppliesOnlyToStandardSetsOfOneToTenReps() throws {
+        #expect(try base.set(1,session:1,weight:60,reps:8).estimatedOneRM == 76)
+        #expect(try base.set(2,session:1,weight:100,reps:1).estimatedOneRM == 100)
+        #expect(try base.set(3,session:1,weight:60,reps:11).estimatedOneRM == nil)
+        #expect(try base.set(4,session:1,exercise:"懸垂",weight:10,reps:5,basis:.added).estimatedOneRM == nil)
+        #expect(try base.set(5,session:1,exercise:"懸垂",weight:0,reps:8,basis:.bodyweight).estimatedOneRM == nil)
+    }
+    @Test func personalBestMarksOnlyDaysAboveEveryEarlierDay() throws {
+        let ss = try [base.session(1,date:"2026-10-01"),base.session(2,date:"2026-10-03"),base.session(3,date:"2026-10-05"),base.session(4,date:"2026-10-07")]
+        let sets = try [base.set(11,session:1,weight:60,reps:8),base.set(12,session:2,weight:60,reps:6),base.set(13,session:3,weight:62.5,reps:8),base.set(14,session:4,weight:62.5,reps:8)]
+        let series = try TrainingSnapshot(sessions:ss,sets:sets,notes:[]).series(for:.bench)[0]
+        #expect(series.personalBestIDs(.estimatedOneRM) == [base.id(13)])
+        #expect(series.personalBestIDs(.rpe).isEmpty)
+    }
+    @Test func variationsStayInTheirOwnSeriesSoTheyNeverBeatTheMainLift() throws {
+        let ss = try [base.session(1,date:"2026-10-01"),base.session(2,date:"2026-10-03")]
+        let pause = try TrainingSet(id:base.id(12),sessionID:base.id(2),exercise:"ベンチプレス",number:1,weight:70,reps:5,variant:"ポーズ")
+        let series = try TrainingSnapshot(sessions:ss,sets:[base.set(11,session:1,weight:60,reps:8),pause],notes:[]).series(for:.bench)
+        #expect(series.count == 2)
+        #expect(series.allSatisfy { $0.personalBestIDs(.estimatedOneRM).isEmpty })
+    }
+    @Test func nextTargetRaisesOnlyWhenEveryTopSetReachedTheReps() throws {
+        let ss = try [base.session(1,date:"2026-10-01"),base.session(2,date:"2026-10-03")]
+        let reached = try TrainingSnapshot(sessions:ss,sets:[base.set(11,session:1,weight:55,reps:8),base.set(12,session:2,weight:60,reps:8),base.set(13,session:2,weight:60,reps:8)],notes:[]).series(for:.bench)[0].nextTarget()
+        #expect(reached == TrainingNextTarget(weight:62.5,reps:8,raise:true,reason:"前回(2026-10-03)は60kgの全2セットで8回に届きました。"))
+        let short = try TrainingSnapshot(sessions:ss,sets:[base.set(12,session:2,weight:60,reps:8),base.set(13,session:2,weight:60,reps:6)],notes:[]).series(for:.bench)[0].nextTarget()
+        #expect(short?.raise == false); #expect(short?.weight == 60); #expect(short?.reps == 8)
+        let bodyweight = try TrainingSnapshot(sessions:ss,sets:[base.set(14,session:2,exercise:"懸垂",weight:0,reps:8,basis:.bodyweight)],notes:[]).series(for:.pullup)[0].nextTarget()
+        #expect(bodyweight == nil)
+    }
+}

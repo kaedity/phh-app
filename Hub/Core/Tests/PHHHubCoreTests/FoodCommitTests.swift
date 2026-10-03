@@ -20,14 +20,29 @@ import Testing
     @Test func committedMealRemainsSuccessfulWhenReadbackFails() throws {
         let store = Store(), result = try FoodCommit.confirm(draft(),date:"2026-10-02",slot:"朝食",store:store)
         #expect(result.snapshot == nil); #expect(store.writes == 1)
+        #expect(result.meal.id == result.mealID)
         store.failRead = false
         let restored = try store.snapshot()
         #expect(restored.pending.count == 1); #expect(restored.pending[0].id == result.operationID); #expect(restored.pending[0].meal.id == result.mealID)
+        let change = try FoodUndoChange(operationID: result.operationID, before: nil, after: result.meal)
+        try store.undoChange(change, at: .now)
+        #expect(try store.snapshot().pending.isEmpty)
     }
     @Test func actualWriteFailureIsStillReportedAndCreatesNoMeal() throws {
         let store = Store(); store.failWrite = true
         #expect(throws: FoodFailure.invalidValue) { try FoodCommit.confirm(draft(),date:"2026-10-02",slot:"朝食",store:store) }
         #expect(store.writes == 0); store.failRead = false; #expect(try store.snapshot().pending.isEmpty)
+    }
+    @Test func savedEditSnapshotFailureKeepsBeforeAfterAndOneCompensatingOperation() throws {
+        let store=Store(), saved=try FoodCommit.confirm(draft(),date:"2026-10-02",slot:"朝食",store:store)
+        _ = try store.local.beginSending(saved.operationID); try store.local.acknowledge(saved.operationID, confirmed: saved.meal)
+        let after=try saved.meal.edited(factor: 2, date:"2026-10-03", slot:"夕食")
+        let edited=try FoodCommit.enqueueMeal(after, store:store)
+        #expect(edited.snapshot == nil); #expect(edited.meal == after)
+        let change=try FoodUndoChange(operationID:edited.operationID,before:saved.meal,after:edited.meal)
+        try store.local.undoChange(change)
+        #expect(store.local.state.pending.isEmpty); #expect(store.local.state.confirmed == [saved.meal])
+        #expect(store.writes == 2)
     }
     @Test func catalogCommitDoesNotBecomeFailureAfterSave() throws {
         let store = Store(), category = try FoodCategory(name:"架空の分類")

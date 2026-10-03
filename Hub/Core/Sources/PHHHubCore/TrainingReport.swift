@@ -18,7 +18,7 @@ public struct TrainingExport: Codable, Sendable {
         let eligible=Set(sessions.map(\.id)),dates=Dictionary(uniqueKeysWithValues:sessions.map {($0.id,$0.date)})
         let sets=snapshot.sets.filter { eligible.contains($0.sessionID) && (exercise==nil || $0.exercise==exercise || TrainingExercise.identify(exercise!) == TrainingExercise.identify($0.exercise) && TrainingExercise.identify(exercise!) != nil) }.sorted { (dates[$0.sessionID]!,$0.sessionID,$0.exercise,$0.number,$0.id)<(dates[$1.sessionID]!,$1.sessionID,$1.exercise,$1.number,$1.id) }
         let revisions=Dictionary(uniqueKeysWithValues:local.filter {$0.table=="TrainingSets"}.map {($0.entityID,$0.revision)})
-        func value(_ set:TrainingSet)->Double? { switch metric { case .weight:set.basis == .bodyweight ? nil:set.weight;case .reps:Double(set.reps);case .rpe:set.rpe;case .measuredOneRM:set.measuredOneRM } }
+        func value(_ set:TrainingSet)->Double? { switch metric { case .weight:set.basis == .bodyweight ? nil:set.weight;case .reps:Double(set.reps);case .rpe:set.rpe;case .measuredOneRM:set.measuredOneRM;case .estimatedOneRM:set.estimatedOneRM } }
         func brief(_ s:String)->String { String(s.prefix(200)) }
         let page=Array(sets.dropFirst(offset).prefix(limit)),next=offset+page.count
         let items:[[String:Any]]=page.map { set in

@@ -8,6 +8,7 @@ import SwiftUI
   private(set) var state: FoodScreenSnapshot
   var message = ""
   var lastAddition: (operation: String, meal: String)?
+  private(set) var lastUndo: FoodUndoChange?
   init(store: FoodLocalStore) {
     self.store = store;onSaved=nil
     state = try! store.snapshot()
@@ -17,51 +18,46 @@ import SwiftUI
   }
   var canSimulateReceipt:Bool {store is FoodLocalStore}
   func refresh() throws {state=try store.snapshot()}
-  func perform(_ action: () throws -> Void) {
+  @discardableResult func perform(_ action: () throws -> Void) -> Bool {
     do {
       try action()
       state = try store.snapshot()
-      onSaved?()
-    } catch { message = error.localizedDescription }
+      onSaved?(); return true
+    } catch { message = error.localizedDescription; return false }
   }
   func add(_ preset: String, date: String, slot: String) {
-    perform {
-      let id = try store.addPreset(preset, date: date, slot: slot)
-      lastAddition = (id, try store.snapshot().pending.first { $0.id == id }!.meal.id)
-      message = "追加しました · 端末に保存済み"
-    }
-    Haptics.emit(.lightPress)
+    do {
+      guard let p=state.catalog.presets.first(where: { $0.id == preset && !$0.archived }) else { throw FoodFailure.missingReference }
+      let meal=try FoodMeal(date: date, slot: slot, items: state.catalog.snapshot(preset), presetID: p.id, presetRevision: p.revision)
+      applySaved(try FoodCommit.enqueueMeal(meal, store: store), before: nil, text: "追加しました · 端末に保存済み")
+      Haptics.emit(.lightPress)
+    } catch { message=error.localizedDescription }
   }
   func undo() {
-    guard let last = lastAddition else { return }
-    perform {
-      if state.pending.contains(where: { $0.id == last.operation }) {
-        try store.undoAddition(last.operation)
-      } else {
-        try store.edit(last.meal,factor:1,date:nil,slot:nil,remove:true)
-      }
-      lastAddition = nil
-      message = "取り消しを端末に保存しました"
+    guard let change=lastUndo, change.available() else { return }
+    if perform({ try store.undoChange(change, at: .now); message="取り消しを端末に保存しました" }) {
+      lastUndo=nil; lastAddition=nil
     }
+  }
+  func expireUndo(_ operationID: String) { if lastUndo?.operationID == operationID { lastUndo=nil } }
+  private func applySaved(_ saved: FoodCommit.SavedMeal, before: FoodMeal?, text: String) {
+    if let snapshot=saved.snapshot { state=snapshot }
+    lastUndo=try? FoodUndoChange(operationID: saved.operationID, before: before, after: saved.meal)
+    if before == nil { lastAddition=(saved.operationID, saved.mealID) }
+    message=saved.snapshot == nil ? "変更は端末に保存済みです。表示の取得に失敗したため前回値を保持しています。同期後に再表示します。" : text
+    onSaved?()
   }
   func edit(_ meal: FoodMeal, factor: Double, date: String, slot: String) {
-    perform {
-      try store.edit(meal.id, factor: factor, date: date, slot: slot,remove:false)
-      message = "変更を端末に保存しました"
-    }
+    do { let next=try meal.edited(factor: factor, date: date, slot: slot); applySaved(try FoodCommit.enqueueMeal(next, store: store), before: meal, text: "変更を端末に保存しました") }
+    catch { message=error.localizedDescription }
   }
   func remove(_ meal: FoodMeal) {
-    perform {
-      try store.edit(meal.id,factor:1,date:nil,slot:nil,remove:true)
-      message = "取消を端末に保存しました"
-    }
+    do { let next=try meal.edited(remove: true); applySaved(try FoodCommit.enqueueMeal(next, store: store), before: meal, text: "取消を端末に保存しました") }
+    catch { message=error.localizedDescription }
   }
   func confirm(_ draft: FoodDraft, date: String, slot: String, identity: String? = nil) throws {
     let saved = try FoodCommit.confirm(draft, date: date, slot: slot, store: store, identity: identity)
-    lastAddition = (saved.operationID, saved.mealID)
-    if let snapshot = saved.snapshot { state = snapshot }
-    message = saved.snapshot == nil ? "食事は端末に保存済みです。表示の取得に失敗したため前回値を保持しています。同期後に再表示します。" : "確認した食事を端末に保存しました"
-    onSaved?()
+    applySaved(saved, before: nil, text: "確認した食事を端末に保存しました")
   }
   func save(_ catalog: FoodCatalog) throws {
     let snapshot = try FoodCommit.saveCatalog(catalog, store: store)
@@ -104,7 +100,7 @@ enum FoodDates {
   }
 }
 func foodNumber(_ value: Double?) -> String {
-  value.map { $0.formatted(.number.precision(.fractionLength(0...4))) } ?? "未設定"
+  value.map { $0.formatted(.number.precision(.fractionLength(0...4))) } ?? "—"
 }
 struct FoodTotalsView: View {
   private var motion = MotionPolicy()
@@ -113,8 +109,8 @@ struct FoodTotalsView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       AccessibleRow {
-        Text(foodNumber(total.known[.kcal])).contentTransition(.numericText()).font(
-          .system(size: 38, weight: .semibold, design: .rounded)).animation(Motion.animation(reduceMotion: motion.reduced), value: total.known[.kcal])
+        Text(foodNumber(total.displayValue(for:.kcal))).contentTransition(.numericText()).font(
+          .system(size: 38, weight: .semibold, design: .rounded)).animation(Motion.animation(reduceMotion: motion.reduced), value: total.displayValue(for:.kcal))
         Text("kcal").foregroundStyle(.secondary)
         if !textSize.isAccessibilitySize { Spacer(); Image(systemName: "fork.knife.circle.fill").font(.largeTitle).foregroundStyle(pine) }
       }
@@ -123,15 +119,15 @@ struct FoodTotalsView: View {
           VStack(alignment: .leading, spacing: 4) {
             Text([.protein: "P", .fat: "F", .carbohydrate: "C"][key]!).font(.caption)
               .foregroundStyle(.secondary)
-            Text(foodNumber(total.known[key]) + " g").font(.headline)
+              Text(foodNumber(total.displayValue(for:key)) + " g").font(.headline)
             if (total.missing[key] ?? 0) > 0 {
-              Text("未設定 \(total.missing[key]!)件").font(.caption2).foregroundStyle(.secondary)
+              HubUnknownNutrientsHelp()
             }
           }.frame(maxWidth: .infinity, alignment: .leading)
         }
       }
       if (total.missing[.kcal] ?? 0) > 0 {
-        Text("分かっている分の合計 · カロリー未設定 \(total.missing[.kcal]!)件").font(.caption).foregroundStyle(
+        Text("一部不明 · 分かっている栄養値の合計です").font(.caption).foregroundStyle(
           .secondary)
       }
     }
@@ -145,109 +141,78 @@ struct FoodHubPage: View {
   @State private var slot = "朝食"
   @State private var query = ""
   @State private var category: String?
+  @State private var presetMode = PresetDisplayPreferences.mode
+  @State private var fixedPresetOrder = PresetDisplayPreferences.fixedOrder
+  @State private var searchAliases = FoodSearchPreferences.aliases
   @State private var analysis = false
   @State private var editing: FoodMeal?
   @State private var removing: FoodMeal?
+  @State private var unusualPreset: (String, String, String)?
   @State private var catalog = false
-  var analyze: ((Data?, String) async throws -> FoodDraft)?
+  @State private var labelOCR = false
+  @State private var dateChosen = false
+  @State private var choosingDate = false
+  @Environment(\.scenePhase) private var scenePhase
+  var analyze: (([Data], String) async throws -> FoodDraft)?
   let preview: Bool
   let initialAnalysisNote: String
+  let hydration:HydrationScreenModel?
+  let livePlateAnalyzer:SharedPlateAnalyzer?
   let planning:PlanningScreenModel?
   var syncing: Bool
+  let implicitDate: Bool
   init(
-    model: FoodScreenModel, date: Date, analyze: ((Data?, String) async throws -> FoodDraft)? = nil,
-    preview: Bool, initialAnalysisNote: String = "", planning:PlanningScreenModel? = nil, syncing: Bool = false
+    model: FoodScreenModel, date: Date, analyze: (([Data], String) async throws -> FoodDraft)? = nil,
+    preview: Bool, initialAnalysisNote: String = "", planning:PlanningScreenModel? = nil, syncing: Bool = false,
+    implicitDate: Bool = false, hydration:HydrationScreenModel? = nil, plateAnalyze:SharedPlateAnalyzer? = nil
   ) {
     self.model = model
     self.analyze = analyze
     self.preview = preview
+    self.hydration=hydration
+    self.livePlateAnalyzer=plateAnalyze
     self.planning=planning
     self.syncing=syncing
+    self.implicitDate=implicitDate
     self.initialAnalysisNote = initialAnalysisNote
-    _date = State(initialValue: date)
+    _date = State(initialValue: implicitDate ? RecordingPreferences.day() : date)
   }
   private var plateAnalyzer: SharedPlateAnalyzer? {
     #if DEBUG
     if preview { return SharedPlatePreviewData.analyze }
     #endif
-    return nil
+    return livePlateAnalyzer
   }
   private var day: String { FoodDates.text(date) }
   var body: some View {
-    Page(title: "食事") {
+    HubMockPage {
       let projection = try? FoodDayPresentation(date: day, snapshot: model.state)
       let foodTotal = projection?.localTotal ?? FoodTotal.day(day, meals: model.state.confirmed)
       let total = (try? planning?.totalWithSupplements(foodTotal, date: day)) ?? foodTotal
-      if preview { Text("架空データ · オフライン操作確認").font(.caption).foregroundStyle(.secondary) }
-      HStack {
-        Button {
-          date = FoodDates.calendar.date(byAdding: .day, value: -1, to: date)!
-        } label: {
-          Image(systemName: "chevron.left").frame(width: 36, height: 40)
-        }.accessibilityLabel("前の日")
-        DatePicker("記録する日", selection: $date, displayedComponents: .date).labelsHidden().dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-          .environment(\.timeZone, FoodDates.calendar.timeZone)
-        Spacer()
-        Button {
-          date = FoodDates.calendar.date(byAdding: .day, value: 1, to: date)!
-        } label: {
-          Image(systemName: "chevron.right").frame(width: 36, height: 40)
-        }.accessibilityLabel("次の日")
+      HStack(spacing: 8) {
+        Button { dateChosen=true; date=FoodDates.calendar.date(byAdding: .day, value: -1, to: date)! } label: { Image(systemName: "chevron.left").frame(width: 32, height: 44) }.accessibilityLabel("前の日")
+        Text(mockDay(date)).font(.headline).frame(maxWidth: .infinity, alignment: .leading)
+        Picker("記録の区分", selection: $slot) { ForEach(FoodRules.slots, id: \.self) { Text($0) } }.pickerStyle(.menu).font(.subheadline)
+        Button { dateChosen=true; date=FoodDates.calendar.date(byAdding: .day, value: 1, to: date)! } label: { Image(systemName: "chevron.right").frame(width: 32, height: 44) }.accessibilityLabel("次の日")
       }
-      Card {
-        Text("記録上の摂取量").font(.subheadline).foregroundStyle(.secondary)
-        FoodTotalsView(total: total)
-        if let projection, !projection.pending.isEmpty {
-          Text("端末保存・送信待ち \(projection.pending.count)件。要確認の変更は合計に含めていません。").font(.caption).foregroundStyle(.secondary)
-        }
-        if let days = try? planning?.supplements().days.filter({ $0.date == day && $0.isCounted }), !days.isEmpty {
-          Text("サプリ込み · 予定\(days.filter { $0.state == .planned }.count)件／服用確認\(days.filter { $0.state == .confirmed }.count)件").font(.caption).foregroundStyle(.secondary)
-        }
-        if model.state.catalogPendingCount>0 {Text("食品・プリセットの送信待ち \(model.state.catalogPendingCount)件").font(.caption).foregroundStyle(.secondary)}
-      }
-      if let planning {
-        PlanningDayCard(model:planning,date:day,consumed:planningConsumed(total:foodTotal))
-        NavigationLink("カテゴリー内のサプリ・自動計上") { SupplementPage(model:planning,date:day) }
-      }
-      if !model.message.isEmpty {
-        Card {
-          Text(model.message).font(.subheadline)
-          if model.lastAddition != nil {
-            Button("取り消す", systemImage: "arrow.uturn.backward") { model.undo() }.buttonStyle(
-              .bordered)
-          }
-        }.transition(.move(edge: .bottom).combined(with: .opacity)).animation(Motion.animation(reduceMotion: motion.reduced), value: model.message).accessibilityIdentifier("food-feedback")
-      }
-      if textSize.isAccessibilitySize {
-        Picker("記録の区分", selection: $slot) { ForEach(FoodRules.slots, id: \.self) { Text($0) } }.pickerStyle(.menu)
-      } else {
-        MotionSegments(title: "記録の区分", selection: $slot, options: FoodRules.slots.map { ($0, $0) })
-      }
-      Button {
-        analysis = true
-      } label: {
-        Label("写真・文章から記録", systemImage: "camera").frame(maxWidth: .infinity).padding(.vertical, 8)
-      }.buttonStyle(.borderedProminent)
-      HStack {
-        Text("いつもの食事").font(.title3.bold())
-        Spacer()
-        Button {
-          catalog = true
-        } label: {
-          Label("編集", systemImage: "slider.horizontal.3")
-        }.accessibilityLabel("プリセットを編集")
-      }
-      TextField("プリセットを検索", text: $query).textFieldStyle(.roundedBorder).accessibilityIdentifier(
-        "food-preset-search")
       ScrollView(.horizontal, showsIndicators: false) {
-        HStack {
-          categoryButton("すべて", id: nil)
-          ForEach(model.state.catalog.categories.filter { !$0.archived }) { c in
-            categoryButton(c.name, id: c.id)
-          }
-        }
+        HStack { categoryButton("すべて", id: nil); ForEach(model.state.catalog.categories.filter { !$0.archived }) { c in categoryButton(c.name, id: c.id) } }
       }
-      let presets = model.state.catalog.visiblePresets(query: query, categoryID: category)
+      HStack(spacing: 10) {
+        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+        TextField("食べ物を検索", text: $query).accessibilityIdentifier("food-preset-search")
+        Menu {
+          Button("記録する日を選ぶ") { choosingDate=true }
+          Picker("並び方", selection: $presetMode) { Text("よく使う順").tag(FoodPresetRanking.Mode.frequent); Text("この区分で使う順").tag(FoodPresetRanking.Mode.mealTime) }
+          NavigationLink("並びを固定・変更") { FoodPresetOrderPage(catalog: model.state.catalog).toolbar(.visible,for:.navigationBar) }
+          NavigationLink("食事の記録設定") { RecordingPreferencesPage().toolbar(.visible,for:.navigationBar) }
+          NavigationLink("食品成分表から登録") {ReferenceFoodPage(model:model).toolbar(.visible,for:.navigationBar)}
+          Button("成分表示から登録") { labelOCR=true }
+          Button("プリセットを編集") { catalog=true }
+        } label: { Image(systemName: "slider.horizontal.3").frame(width: 32, height: 32) }.accessibilityLabel("検索と記録の設定")
+      }.padding(12).background(pine.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
+      if !fixedPresetOrder.isEmpty { Text("固定した並びを優先しています").font(.caption).foregroundStyle(.secondary) }
+      let presets = FoodPresetRanking.order(model.state.catalog.visiblePresets(query: query, categoryID: category, aliases: searchAliases), meals: model.state.confirmed, slot: slot, mode: presetMode, fixedOrder: fixedPresetOrder)
       if presets.isEmpty {
         Card {
           if model.state.catalog.presets.isEmpty {
@@ -262,26 +227,44 @@ struct FoodHubPage: View {
       }
       ForEach(presets) { p in
         Button {
-          withAnimation(Motion.animation(reduceMotion: motion.reduced)) { model.add(p.id, date: day, slot: slot) }
+          refreshImplicitDate()
+          if p.components.contains(where: { UnusualNumericEntry.needsConfirmation(.quantity, value: $0.factor, baseline: 1) }) {
+            unusualPreset = (p.id, day, slot)
+          } else { withAnimation(Motion.animation(reduceMotion: motion.reduced)) { model.add(p.id, date: day, slot: slot) } }
         } label: {
           HStack(spacing: 14) {
-            Image(systemName: p.components.count > 1 ? "square.stack.3d.up" : "leaf").font(.title3)
-              .foregroundStyle(pine).frame(width: 42, height: 42).background(
-                pine.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 5) {
-              Text(p.name).font(.headline)
-              let total = FoodTotal(items: (try? model.state.catalog.snapshot(p.id)) ?? [])
-              Text(
-                "\((total.missing[.kcal] ?? 0) > 0 ? (total.known[.kcal] == 0 ? "カロリー未設定" : foodNumber(total.known[.kcal]) + " kcal＋未設定") : foodNumber(total.known[.kcal]) + " kcal") · \(p.components.count)品"
-              ).font(.caption)
-                .foregroundStyle(.secondary)
+              Text(p.name).font(.headline).foregroundStyle(.primary)
+              let items = (try? model.state.catalog.snapshot(p.id)) ?? []
+              let total = FoodTotal(items: items)
+              HStack {
+                MockFigure(value: foodNumber(total.displayValue(for:.kcal)), unit: "kcal", size: 20)
+                if (total.missing[.kcal] ?? 0) > 0 { Text("一部不明").font(.caption2).foregroundStyle(.secondary) }
+                Spacer()
+                Text(items.count == 1 ? "\(foodNumber(items[0].quantity))\(items[0].unit)（標準）" : "1食（標準）").font(.caption).foregroundStyle(.secondary)
+              }
             }
             Spacer()
-            Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(pine)
+            Image(systemName: "plus.circle").font(.title2).foregroundStyle(pine)
           }.padding(16).background(.background, in: RoundedRectangle(cornerRadius: 18))
             .contentShape(Rectangle())
         }.buttonStyle(HubPressStyle()).accessibilityLabel("\(p.name)を追加")
       }
+      Button { refreshImplicitDate(); analysis=true } label: {
+        HubSettingsRow(title: "写真・文章から記録", subtitle: "食べたものと量を確認して登録します", symbol: "sparkles")
+      }.buttonStyle(.plain).padding(16).background(.background, in: RoundedRectangle(cornerRadius: 16)).accessibilityLabel("写真・文章から記録")
+      if !model.message.isEmpty && model.lastUndo == nil { Text(model.message).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("food-feedback") }
+      if let planning {
+        DisclosureGroup("目標とサプリ") {
+          PlanningDayCard(model:planning,date:day,consumed:planningConsumed(total:foodTotal))
+          NavigationLink("カテゴリー内のサプリ・自動計上") { SupplementPage(model:planning,date:day) }
+        }.font(.subheadline)
+      }
+      HubMockCard {
+        HStack { Text("摂取合計").font(.subheadline); Spacer(); MockFigure(value: foodNumber(total.displayValue(for:.kcal)), unit: "kcal", size: 24) }
+        if total.missing.values.contains(where: { $0 > 0 }) { HubUnknownNutrientsHelp() }
+      }
+      if let hydration {HydrationCard(model:hydration,date:day)}
       HStack {
         Text("この日の記録").font(.title3.bold())
         Spacer()
@@ -325,7 +308,25 @@ struct FoodHubPage: View {
             .accessibilityIdentifier("food-simulate-receipt")
         }
       #endif
-    }.animation(Motion.animation(reduceMotion: motion.reduced), value: model.state.confirmed.filter { !$0.removed }.map(\.id))
+    }.modifier(FoodUndoOverlay(model: model))
+    .sheet(isPresented:$labelOCR){NavigationStack{FoodLabelPage(model:model,preview:preview)}}
+    .onAppear { refreshImplicitDate(); fixedPresetOrder=PresetDisplayPreferences.fixedOrder; searchAliases=FoodSearchPreferences.aliases }
+    .onChange(of: catalog) { _, open in if !open { searchAliases=FoodSearchPreferences.aliases } }
+    .onChange(of: presetMode) { _, mode in PresetDisplayPreferences.mode=mode }
+    .onChange(of: scenePhase) { _, phase in if phase == .active { refreshImplicitDate() } }
+    .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in refreshImplicitDate() }
+    .alert("基準量より大きい食事です", isPresented: Binding(get: { unusualPreset != nil }, set: { if !$0 { unusualPreset=nil } })) {
+      Button("この量で記録") { if let proposed=unusualPreset { model.add(proposed.0, date: proposed.1, slot: proposed.2) }; unusualPreset=nil }
+      Button("記録しない", role: .cancel) { unusualPreset=nil }
+    } message: { Text("食品の基準量の5倍以上の品目があります。意図した量であれば、そのまま記録できます。") }
+    .animation(Motion.animation(reduceMotion: motion.reduced), value: model.state.confirmed.filter { !$0.removed }.map(\.id))
+    .sheet(isPresented: $choosingDate) {
+      NavigationStack {
+        DatePicker("記録する日", selection: Binding(get: { date }, set: { dateChosen=true; date=$0 }), displayedComponents: .date)
+          .datePickerStyle(.graphical).environment(\.timeZone, FoodDates.calendar.timeZone).padding().navigationTitle("記録する日")
+          .navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement:.confirmationAction) { Button("完了") { choosingDate=false } } }
+      }.presentationDetents([.medium,.large])
+    }
     .sheet(isPresented: $analysis) {
       NavigationStack {
         FoodAnalysisPage(date: day, slot: slot, analyze: analyze, initialNote: initialAnalysisNote, plateAnalyze: plateAnalyzer, platePreview: preview, plateSave: { draft, day, mealSlot, identity in try model.confirm(draft, date: day, slot: mealSlot, identity: identity) })
@@ -335,7 +336,7 @@ struct FoodHubPage: View {
       }
     }.sheet(item: $editing) { meal in
       NavigationStack {
-        FoodMealEditor(meal: meal) { factor, d, s in
+        FoodMealEditor(meal: meal, catalog: model.state.catalog) { factor, d, s in
           model.edit(meal, factor: factor, date: d, slot: s)
         }
       }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
@@ -360,6 +361,10 @@ struct FoodHubPage: View {
       ).background(category == id ? pine : pine.opacity(0.08), in: Capsule())
     }.buttonStyle(.plain)
   }
+  private func refreshImplicitDate() {
+    guard implicitDate && !dateChosen && !analysis && !catalog && editing == nil && removing == nil && unusualPreset == nil else { return }
+    date = RecordingPreferences.day()
+  }
 }
 struct FoodMealContents: View {
   let meal: FoodMeal
@@ -373,10 +378,10 @@ struct FoodMealContents: View {
               .secondary)
           }
           Spacer()
-          Text("\(foodNumber(i.nutrients.kcal)) kcal").font(.subheadline.monospacedDigit())
+          Text("\(i.nutrients.kcal.map(foodNumber) ?? "—") kcal").font(.subheadline.monospacedDigit())
         }.motionReveal(order: order)
       }
-      Text("\(meal.date) · \(meal.slot) · 版\(meal.revision)").font(.caption2).foregroundStyle(
+      Text("\(mockDay(meal.date)) · \(meal.slot)").font(.caption2).foregroundStyle(
         .secondary)
     }
   }
@@ -384,15 +389,19 @@ struct FoodMealContents: View {
 struct FoodMealEditor: View {
   private var motion = MotionPolicy()
   let meal: FoodMeal, save: (Double, String, String) -> Void
+  let catalog: FoodCatalog?
   @Environment(\.dismiss) private var dismiss
   @State private var factor = "1"
   @State private var date: Date
   @State private var slot: String
   @State private var error = ""
   @State private var increasing = true
-  init(meal: FoodMeal, save: @escaping (Double, String, String) -> Void) {
+  @State private var unusual = false
+  @State private var proposed: (Double, String, String)?
+  init(meal: FoodMeal, catalog: FoodCatalog? = nil, save: @escaping (Double, String, String) -> Void) {
     self.meal = meal
     self.save = save
+    self.catalog = catalog
     _date = State(initialValue: FoodDates.date(meal.date))
     _slot = State(initialValue: meal.slot)
   }
@@ -431,12 +440,16 @@ struct FoodMealEditor: View {
           do {
             guard let n = Double(factor) else { throw FoodFailure.invalidValue }
             _ = try meal.edited(factor: n, date: FoodDates.text(date), slot: slot)
-            save(n, FoodDates.text(date), slot)
-            dismiss()
+            if UnusualNumericEntry.unusualMealQuantity(meal, factor: n, catalog: catalog) {
+              proposed = (n, FoodDates.text(date), slot); unusual = true
+            } else { save(n, FoodDates.text(date), slot); dismiss() }
           } catch { self.error = error.localizedDescription }
         }
       }
-    }
+    }.alert("量がいつもより大きくなっています", isPresented: $unusual) {
+      Button("この量で保存") { if let proposed { save(proposed.0, proposed.1, proposed.2); dismiss() }; proposed=nil }
+      Button("入力に戻る", role: .cancel) { proposed=nil }
+    } message: { Text("食品の基準量の5倍以上です。基準量がない食品は、記録時の量と比べています。意図した量であれば、そのまま保存できます。") }
   }
   private func changeFactor(_ delta: Double) { guard let current = Double(factor) else { return }; setFactor(max(0.1, current + delta)) }
   private func setFactor(_ value: Double) {
@@ -451,6 +464,7 @@ struct FoodHistoryPage: View {
   var syncing = false
   @State private var editing: FoodMeal?
   @State private var removing: FoodMeal?
+  @State private var expandedSlots = Set(FoodRules.slots)
   private var motion = MotionPolicy()
   init(model: FoodScreenModel, initialDate: Date, syncing: Bool = false) {
     self.syncing = syncing
@@ -458,31 +472,53 @@ struct FoodHistoryPage: View {
     _date = State(initialValue: initialDate)
   }
   var body: some View {
-    Page(title: "食事の履歴") {
+    HubMockPage(title: "食事履歴", showNavigation: true) {
       DatePicker("日付", selection: $date, displayedComponents: .date).environment(
         \.timeZone, FoodDates.calendar.timeZone)
-      Card { FoodTotalsView(total: .day(FoodDates.text(date), meals: model.state.confirmed)) }
+      let projection = try? FoodDayPresentation(date:FoodDates.text(date),snapshot:model.state)
+      let visibleMeals = projection?.meals ?? model.state.confirmed.filter { !$0.removed && $0.date == FoodDates.text(date) }
+      Text(mockDay(date)).font(.headline)
+      HubMockCard {
+        HStack { Text("摂取合計"); Spacer(); MockFigure(value: hubFoodEnergy(visibleMeals.flatMap(\.items)), unit: "kcal", size: 34) }
+        if FoodTotal(items:visibleMeals.flatMap(\.items)).missing.values.contains(where:{$0>0}) { HubUnknownNutrientsHelp() }
+        HStack { ForEach(FoodRules.slots, id: \.self) { slot in
+          VStack(spacing: 4) { Text(slot).font(.caption).foregroundStyle(.secondary); Text(hubFoodEnergy(visibleMeals.filter { $0.slot == slot }.flatMap(\.items))+" kcal").font(.caption.bold()) }.frame(maxWidth: .infinity)
+        } }
+      }
       if syncing { MotionSkeleton() }
       ForEach(FoodRules.slots, id: \.self) { slot in
-        let meals = model.state.confirmed.filter {
-          !$0.removed && $0.date == FoodDates.text(date) && $0.slot == slot
-        }
+        let meals = visibleMeals.filter { $0.slot == slot }
         if !meals.isEmpty {
-          Text(slot).font(.title3.bold())
-          ForEach(meals) { meal in Card {
-            FoodMealContents(meal: meal)
+          DisclosureGroup(isExpanded:Binding(get:{expandedSlots.contains(slot)},set:{ if $0 { expandedSlots.insert(slot) } else { expandedSlots.remove(slot) } })) {
+          ForEach(meals) { meal in HubMockCard {
+            VStack(alignment:.leading,spacing:6) {
+              Text(meal.items.map(\.name).joined(separator:"・")).font(.subheadline.bold()).accessibilityIdentifier("food-history-meal-name")
+              HStack(alignment:.firstTextBaseline) {
+                MockFigure(value:meal.items.allSatisfy { $0.nutrients.kcal == nil } ? "—" : foodNumber(FoodTotal(items:meal.items).known[.kcal]),unit:"kcal",size:18)
+                HubMealMacroLine(items:meal.items)
+              }
+            }
             MotionRowMenu(title: meal.items.map(\.name).joined(separator: "・")) {
-              Button("量・日付を変更") { editing=meal }
-              Button("取消", role: .destructive) { removing=meal }
+              MotionMenuAction(title: "量・日付を変更") { editing=meal }
+              MotionMenuAction(title: "取消", role: .destructive) { removing=meal }
             }.disabled(model.state.pending.contains { $0.meal.id == meal.id })
           }.transition(.move(edge: .trailing).combined(with: .opacity)) }
+          } label: {
+            HStack { Circle().fill(pine.opacity(0.6)).frame(width: 9,height: 9); Text(slot).font(.headline); Text(hubFoodEnergy(meals.flatMap(\.items))+" kcal").font(.subheadline) }
+          }.accessibilityIdentifier("food-history-"+slot)
         }
       }
-      if model.state.confirmed.filter({ !$0.removed && $0.date == FoodDates.text(date) }).isEmpty {
+      let review = model.state.pending.filter { projection?.reviewIDs.contains($0.id) == true }
+      if !review.isEmpty {
+        Text("確認待ち · 集計外").font(.headline)
+        ForEach(review) { op in HubMockCard { FoodMealContents(meal: op.meal); Text(op.error ?? "内容を確認してください").font(.caption).foregroundStyle(.orange) } }
+      }
+      if visibleMeals.isEmpty {
         ContentUnavailableView("記録がありません", systemImage: "calendar")
       }
-    }.animation(Motion.animation(reduceMotion: motion.reduced), value: model.state.confirmed.filter { !$0.removed }.map(\.id))
-      .sheet(item: $editing) { meal in NavigationStack { FoodMealEditor(meal: meal) { factor, date, slot in model.edit(meal, factor: factor, date: date, slot: slot) } }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
+    }.modifier(FoodUndoOverlay(model: model))
+    .animation(Motion.animation(reduceMotion: motion.reduced), value: model.state.confirmed.filter { !$0.removed }.map(\.id))
+      .sheet(item: $editing) { meal in NavigationStack { FoodMealEditor(meal: meal, catalog: model.state.catalog) { factor, date, slot in model.edit(meal, factor: factor, date: date, slot: slot) } }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
       .confirmationDialog("この食事を取り消しますか", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing=nil } })) {
         Button("この食事を取り消す", role: .destructive) { if let removing { model.remove(removing) }; removing=nil }
       }
@@ -500,12 +536,12 @@ struct FoodCatalogPage: View {
   @State private var error = ""
   var body: some View {
     List {
-      Section("食品の版") {
+      Section("登録した食品") {
         ForEach(model.state.catalog.versions) { v in
           Button { versionEditing = v } label: {
           VStack(alignment: .leading) {
             Text(v.name).font(.headline)
-            Text("\(foodNumber(v.quantity))\(v.unit) · \(v.preparation) · 版\(v.revision)").font(
+            Text("\(foodNumber(v.quantity))\(v.unit) · \(v.preparation)").font(
               .caption
             ).foregroundStyle(.secondary)
           }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
@@ -521,9 +557,9 @@ struct FoodCatalogPage: View {
             HStack {
               Text(p.name)
               Spacer()
-              Text(p.archived ? "非表示" : "版\(p.revision)").foregroundStyle(.secondary)
+              Text(p.archived ? "非表示" : "").foregroundStyle(.secondary)
             }
-          }
+          }.accessibilityLabel(p.name + "のプリセットを編集")
         }
         Button("プリセットを作成") { newPreset = true }
       }
@@ -605,7 +641,8 @@ struct FoodVersionEditor: View {
   let nextRevision: Int
   @Environment(\.dismiss) private var dismiss
   @State private var name = ""
-  @State private var quantity = "1"
+  @State private var quantity = ""
+  @State private var quantityFromPrevious = true
   @State private var unit = "個"
   @State private var preparation = "未指定"
   @State private var source = "商品表示"
@@ -621,7 +658,8 @@ struct FoodVersionEditor: View {
     self.nextRevision = nextRevision
     self.save = save
     _name = State(initialValue: prior?.name ?? "")
-    _quantity = State(initialValue: prior.map { String($0.quantity) } ?? "1")
+    _quantity = State(initialValue: prior.map { String($0.quantity) } ?? NumericHistory.quantity(unit: "個"))
+    _quantityFromPrevious = State(initialValue: prior == nil)
     _unit = State(initialValue: prior?.unit ?? "個")
     _preparation = State(initialValue: prior?.preparation ?? "未指定")
     _source = State(initialValue: prior?.source ?? "商品表示")
@@ -634,7 +672,7 @@ struct FoodVersionEditor: View {
     Form {
       Section("表示する量") {
         LabeledContent("食品名") { TextField("食品名", text: $name) }
-        LabeledContent("基準量") { TextField("基準量", text: $quantity).keyboardType(.decimalPad) }
+        LabeledContent("基準量") { TextField("基準量", text: Binding(get: { quantity }, set: { quantity=$0; quantityFromPrevious=false })).motionFieldError(error).keyboardType(.decimalPad) }
         LabeledContent("単位（個・gなど）") { TextField("単位（個・gなど）", text: $unit) }
         LabeledContent("調理状態") { TextField("調理状態", text: $preparation) }
         Picker("出典", selection: $source) {
@@ -648,7 +686,8 @@ struct FoodVersionEditor: View {
         LabeledContent("C（g）") { TextField("C（g）", text: $carbs).keyboardType(.decimalPad) }
       }
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
-    }.navigationTitle(prior == nil ? "食品を追加" : "食品の新しい版").navigationBarTitleDisplayMode(.inline)
+    }.onChange(of: unit) { _, newUnit in if prior == nil && quantityFromPrevious { quantity=NumericHistory.quantity(unit: newUnit) } }
+      .navigationTitle(prior == nil ? "食品を追加" : "食品の内容を更新").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
         ToolbarItem(placement: .confirmationAction) {
@@ -667,6 +706,7 @@ struct FoodVersionEditor: View {
                   nutrients: .init(
                     kcal: number(kcal), protein: number(protein), fat: number(fat),
                     carbohydrate: number(carbs))))
+              NumericHistory.rememberQuantity(q, unit: unit)
               dismiss()
             } catch { self.error = error.localizedDescription }
           }
@@ -681,6 +721,7 @@ struct FoodPresetEditor: View {
   @State private var category: String
   @State private var selected: [String: Double]
   @State private var archived: Bool
+  @State private var aliases: String
   @State private var error = ""
   init(catalog: FoodCatalog, preset: FoodPreset? = nil, save: @escaping (FoodPreset) throws -> Void)
   {
@@ -693,22 +734,25 @@ struct FoodPresetEditor: View {
       initialValue: Dictionary(
         (preset?.components ?? []).map { ($0.versionID, $0.factor) }, uniquingKeysWith: +))
     _archived = State(initialValue: preset?.archived ?? false)
+    _aliases = State(initialValue: preset.map { FoodSearchPreferences.aliases[$0.id]?.joined(separator: "、") ?? "" } ?? "")
   }
   var body: some View {
     Form {
       Section("プリセット") {
         TextField("名前", text: $name)
+        TextField("検索用の読み・略称", text: $aliases, axis: .vertical)
+        Text("読みや略称は、読点で区切ってこの端末に保存します。").font(.caption).foregroundStyle(.secondary)
         Picker("カテゴリー", selection: $category) {
           Text("分類なし").tag("")
           ForEach(catalog.categories) { Text($0.name).tag($0.id) }
         }
         Toggle("一覧から非表示", isOn: $archived)
       }
-      Section("組み合わせる食品の版") {
+      Section("組み合わせる食品") {
         ForEach(catalog.versions) { v in
           VStack(alignment: .leading) {
             Toggle(
-              "\(v.name) · 版\(v.revision)",
+              "\(v.name) · \(foodNumber(v.quantity))\(v.unit)",
               isOn: Binding(get: { selected[v.id] != nil }, set: { selected[v.id] = $0 ? 1 : nil }))
             if selected[v.id] != nil {
               Stepper(
@@ -736,11 +780,36 @@ struct FoodPresetEditor: View {
               components: selected.keys.sorted().map {
                 try .init(versionID: $0, factor: selected[$0]!)
               }, archived: archived)
+            let aliasData=try FoodSearchPreferences.prepared(aliases, for: p.id)
             try save(p)
+            FoodSearchPreferences.save(aliasData)
             dismiss()
           } catch { self.error = error.localizedDescription }
         }
       }
     }
+  }
+}
+
+struct FoodUndoOverlay: ViewModifier {
+  @Bindable var model: FoodScreenModel
+  private var motion = MotionPolicy()
+  func body(content: Content) -> some View {
+    content.safeAreaInset(edge: .bottom, spacing: 0) {
+      if let change=model.lastUndo, change.available() {
+        HStack {
+          Text(model.message).font(.subheadline)
+          Spacer()
+          Button("取り消す", systemImage: "arrow.uturn.backward") {
+            withAnimation(Motion.animation(reduceMotion: motion.reduced)) { model.undo() }
+          }.buttonStyle(.bordered).accessibilityIdentifier("food-undo")
+        }.padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18)).padding(.horizontal, 12)
+          .transition(.move(edge: .bottom).combined(with: .opacity))
+          .task(id: change.operationID) {
+            do { try await Task.sleep(for: .seconds(max(0, change.expiresAt.timeIntervalSinceNow))) } catch { return }
+            model.expireUndo(change.operationID)
+          }
+      }
+    }.animation(Motion.animation(reduceMotion: motion.reduced), value: model.lastUndo?.operationID)
   }
 }

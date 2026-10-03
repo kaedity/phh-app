@@ -19,28 +19,38 @@ import XCTest
             return frame.minY >= 113 && frame.maxY < 768 && frame.minX >= 0 && frame.maxX <= app.frame.width
         }
         for attempt in 0..<25 {
-            let midpointVisible = element.exists && element.frame.midY >= 113 && element.frame.midY < 768
-            if element.exists && ((element.isHittable && midpointVisible) || visibleText()) { return }
+            guard element.exists else {
+                if attempt >= 12 { app.swipeDown() } else { app.swipeUp() }
+                continue
+            }
+            let frame = element.frame
+            let isControl = element.elementType == .button || element.elementType == .switch
+            let insideViewport = isControl ? frame.minY >= 113 && frame.maxY < 768 : frame.midY >= 113 && frame.midY < 768
+            if element.exists && ((element.isHittable && insideViewport) || visibleText()) { return }
             if element.exists && element.frame.maxY < 135 { app.swipeDown() }
-            else if !element.exists && attempt >= 12 { app.swipeDown() }
             else { app.swipeUp() }
         }
         XCTAssertTrue(element.exists && element.isHittable, app.debugDescription)
     }
     private func tap(_ label: String, app: XCUIApplication) {
+        if ["プリセットを編集", "並びを固定・変更", "食事の記録設定", "記録する日を選ぶ"].contains(label), !app.buttons[label].exists, app.buttons["検索と記録の設定"].exists { app.buttons["検索と記録の設定"].tap() }
         let matches = app.buttons.matching(identifier: label)
         let button = matches.element(boundBy: max(0, matches.count - 1))
         reveal(button, app: app); button.tap()
     }
     private func back(_ app: XCUIApplication) { app.navigationBars.buttons.firstMatch.tap() }
-    private func tab(_ label: String, app: XCUIApplication) { app.tabBars.buttons[label].tap() }
+    private func tab(_ label: String, app: XCUIApplication) {
+        let key = ["ホーム":"home", "食事":"food", "その他":"other"][label] ?? label
+        let custom=app.buttons["hub-tab-"+key]
+        if custom.exists { custom.tap() } else { app.tabBars.buttons[label].tap() }
+    }
     private func proof(_ app: XCUIApplication, _ name: String) {
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = name; image.lifetime = .keepAlways; add(image)
         let text = XCTAttachment(string: app.debugDescription); text.name = name + "-elements"; text.lifetime = .keepAlways; add(text)
     }
     private func tour(_ mode: [String], prefix: String) {
         let app = launch(["--p7-preview"] + mode)
-        XCTAssertTrue(app.tabBars.buttons["ホーム"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["hub-tab-home"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["175"].exists); proof(app, prefix + "-home")
         tap("目標と残り", app: app); XCTAssertTrue(app.staticTexts["目標合計 2,000 kcal"].exists); proof(app, prefix + "-goal"); back(app)
         tab("その他", app: app); proof(app, prefix + "-other")
@@ -184,7 +194,7 @@ import XCTest
     }
     func testSyncingAndHistoryProgressAtLargestText() {
         let app = launch(["--p7-preview", "--syncing", "--history-partial", "--dark", "--ax5"])
-        XCTAssertTrue(app.tabBars.buttons["ホーム"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["hub-tab-home"].waitForExistence(timeout: 10))
         reveal(app.staticTexts["履歴を取り込み中"], app: app); proof(app, "history-in-progress-ax5")
         reveal(app.staticTexts["同期しています"], app: app)
         XCTAssertFalse(app.buttons["確認しています…"].isEnabled); proof(app, "syncing-disabled-ax5")
@@ -225,7 +235,7 @@ import XCTest
     }
     func testAnimatedHomeNavigationChartsAndTrainingRows() {
         let app = launch(["--p7-preview", "--light"])
-        XCTAssertTrue(app.tabBars.buttons["ホーム"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["hub-tab-home"].waitForExistence(timeout: 10))
         tap("目標と残り", app: app)
         let info = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "説明：")).firstMatch
         reveal(info, app: app); info.tap(); proof(app, "motion-goal-explanation")
@@ -238,4 +248,201 @@ import XCTest
         tap("training-session-00000000-0000-4000-a000-000000000003", app: app)
         XCTAssertTrue(app.staticTexts["セット1 · 55 kg × 8回"].exists); proof(app, "motion-training-set-rows")
     }
+    func testFoodFiveSecondUndoRestoresChangesAndExpiryKeepsSavedRecord() {
+        let app = launch(["--p4-preview", "--light"])
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 10))
+        func undoNow() {
+            let matches=app.buttons.matching(identifier: "food-undo")
+            let undo=matches.element(boundBy: max(0, matches.count-1))
+            XCTAssertTrue(undo.waitForExistence(timeout: 2)); undo.tap()
+        }
+        tap("全粒粉パンを追加", app: app); undoNow()
+        XCTAssertTrue(app.staticTexts["175"].exists)
+        tap("履歴", app: app); tap("全粒粉パン・ゆで卵のメニュー", app: app)
+        tap("量・日付を変更", app: app); tap("2倍", app: app); tap("保存", app: app); undoNow()
+        XCTAssertTrue(app.staticTexts["175"].exists); proof(app, "undo-quantity-restored")
+        tap("取消", app: app); tap("この食事を取り消す", app: app); undoNow()
+        XCTAssertTrue(app.staticTexts["175"].exists); proof(app, "undo-deletion-restored")
+        back(app); tap("全粒粉パンを追加", app: app)
+        XCTAssertTrue(app.buttons["food-undo"].waitForExistence(timeout: 2))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["food-undo"])], timeout: 8), .completed)
+        reveal(app.staticTexts["275"], app: app); XCTAssertTrue(app.staticTexts["275"].exists)
+        proof(app, "undo-expired-record-retained")
+    }
+    func testNewFoodQuantityUsesPreviousUnitValueAndMissingUnitStaysBlank() {
+        let app = launch(["--p4-preview", "--light", "--numeric-reset"])
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 10))
+        tap("プリセットを編集", app: app); tap("食品を追加", app: app)
+        let quantity=app.textFields["基準量"]
+        XCTAssertEqual(quantity.value as? String, quantity.placeholderValue)
+        app.textFields["食品名"].tap(); app.textFields["食品名"].typeText("架空の前回値試験")
+        quantity.tap(); quantity.typeText("3"); tap("保存", app: app)
+        tap("食品を追加", app: app)
+        XCTAssertEqual(Double(quantity.value as? String ?? ""), 3)
+        let unit=app.textFields["単位（個・gなど）"]
+        unit.tap(); unit.typeText(XCUIKeyboardKey.delete.rawValue + "g")
+        XCTAssertEqual(quantity.value as? String, quantity.placeholderValue)
+        proof(app, "numeric-previous-unit-and-blank")
+        tap("閉じる", app: app); tap("閉じる", app: app)
+        XCTAssertTrue(app.staticTexts["175"].exists)
+    }
+    func testUnusualMealQuantityWarnsOnceAndCanSaveThenOpenDaySettings() {
+        let app = launch(["--p4-preview", "--light"])
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 10))
+        let edit = app.buttons.matching(identifier: "量・日付を変更").firstMatch
+        reveal(edit, app: app); edit.tap()
+        let factor=app.textFields["food-edit-factor"]
+        for _ in 0..<8 { tap("量を0.5倍増やす", app: app) }
+        XCTAssertEqual(Double(factor.value as? String ?? ""), 5)
+        app.navigationBars.buttons["保存"].tap()
+        XCTAssertTrue(app.alerts["量がいつもより大きくなっています"].waitForExistence(timeout: 3))
+        app.alerts.buttons["入力に戻る"].tap()
+        XCTAssertTrue(factor.exists)
+        tap("保存", app: app)
+        app.alerts.buttons["この量で保存"].tap()
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: factor)], timeout: 5), .completed)
+        let total=app.staticTexts.matching(identifier: "875").firstMatch
+        reveal(total, app: app); XCTAssertTrue(total.exists)
+        proof(app, "unusual-quantity-confirmed-once")
+        tap("食事の記録設定", app: app)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "food-cutoff").firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["保存済みの記録の日付は変更しません。時刻は日本時間です。"].exists)
+        proof(app, "late-night-cutoff-setting")
+    }
+    func testPresetDisplayOrderCanBeFixedAndReturnedToAutomatic() {
+        let app = launch(["--p4-preview", "--light"])
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 10))
+        tap("並びを固定・変更", app: app); tap("この順で固定", app: app); back(app)
+        XCTAssertTrue(app.staticTexts["固定した並びを優先しています"].exists)
+        tap("並びを固定・変更", app: app); tap("自動の並びに戻す", app: app); back(app)
+        XCTAssertFalse(app.staticTexts["固定した並びを優先しています"].exists)
+        XCTAssertTrue(app.staticTexts["175"].exists)
+        proof(app, "preset-fixed-order-and-reset")
+    }
+    func testLargePresetNeedsOneConfirmationBeforeWriting() {
+        let app = launch(["--p4-preview", "--light", "--large-preset"])
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 10))
+        tap("架空の5倍を追加", app: app)
+        XCTAssertTrue(app.alerts["基準量より大きい食事です"].waitForExistence(timeout: 3))
+        app.alerts.buttons["記録しない"].tap()
+        XCTAssertTrue(app.staticTexts["175"].exists)
+        tap("架空の5倍を追加", app: app); app.alerts.buttons["この量で記録"].tap()
+        let total = app.staticTexts.matching(identifier: "675").firstMatch
+        reveal(total, app: app); XCTAssertTrue(total.exists)
+        proof(app, "large-preset-confirmed-once")
+    }
+    func testPresetSearchUsesReadingAndSavedLocalAlias() {
+        let app = launch(["--p4-preview", "--light"])
+        let search=app.textFields["food-preset-search"]
+        reveal(search, app: app); search.tap(); search.typeText("ぜんりゅう")
+        XCTAssertTrue(app.buttons["全粒粉パンを追加"].exists)
+        XCTAssertFalse(app.buttons["いつもの朝食を追加"].exists)
+        proof(app, "preset-reading-search")
+        app.terminate(); app.launch()
+        tap("プリセットを編集", app: app); tap("いつもの朝食のプリセットを編集", app: app)
+        let alias=app.textFields["検索用の読み・略称"].exists ? app.textFields["検索用の読み・略称"] : app.textViews["検索用の読み・略称"]
+        alias.tap(); alias.typeText("あさせっと")
+        tap("保存", app: app); tap("閉じる", app: app)
+        reveal(search, app: app); search.tap(); search.typeText("あさせ")
+        XCTAssertTrue(app.buttons["いつもの朝食を追加"].exists)
+        XCTAssertFalse(app.buttons["全粒粉パンを追加"].exists)
+        proof(app, "preset-local-alias-search")
+    }
+    func testMultiplePhotosAndNoteMakeOneMealDraftAndOneRecord() {
+        let app = launch(["--p4-preview", "--light", "--no-questions", "--multi-photo-check"])
+        XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 10))
+        tap("写真・文章から記録", app: app); tap("架空の写真を2枚追加", app: app)
+        XCTAssertTrue(app.staticTexts["同じ1食の写真 2枚"].exists)
+        let note=app.textFields["food-analysis-note"].exists ? app.textFields["food-analysis-note"] : app.textViews["food-analysis-note"]
+        note.tap(); note.typeText(" スープは半分")
+        tap("解析する", app: app)
+        XCTAssertTrue(app.staticTexts["確認前の推定 · 合計には未反映"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["写真1を外す"].exists)
+        proof(app, "multi-photo-one-draft")
+        tap("確認して記録", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: note)], timeout: 5), .completed)
+        let total=app.staticTexts.matching(identifier: "595").firstMatch
+        reveal(total, app: app); XCTAssertTrue(total.exists)
+        XCTAssertTrue(app.staticTexts["端末保存・送信待ち 1件。要確認の変更は合計に含めていません。"].exists)
+        proof(app, "multi-photo-one-saved-record")
+    }
+    func testMockAlignedHomeFoodHistoryOtherAndDetailNavigation() {
+        let app=launch(["--p7-preview", "--light"])
+        // 遷移途中の画面を比較画像にしないよう、撮影前にアニメーションの終了を待ちます。
+        func mockProof(_ name: String) { Thread.sleep(forTimeInterval:0.75); proof(app,name) }
+        XCTAssertTrue(app.buttons["hub-tab-home"].waitForExistence(timeout:10))
+        XCTAssertTrue(app.staticTexts["10月2日（金）"].exists)
+        XCTAssertTrue(app.staticTexts["最新体重"].exists)
+        mockProof("p86-home")
+        let cycle=app.buttons["カレンダーとCycleを見る"]; reveal(cycle,app:app)
+        XCTAssertLessThan(cycle.frame.maxY,app.buttons["hub-tab-home"].frame.minY)
+        mockProof("p86-home-bottom")
+        tap("目標の内訳",app:app); mockProof("p86-goal"); back(app)
+        tap("health-weight-link",app:app); mockProof("p86-weight"); back(app)
+        tab("食事",app:app); XCTAssertTrue(app.buttons["いつもの朝食を追加"].waitForExistence(timeout:5))
+        mockProof("p86-food")
+        tap("履歴",app:app)
+        // DisclosureGroupのIDが子へ伝播するため、見出しと行のラベルで絞ります。
+        let breakfast=app.staticTexts.matching(identifier:"food-history-朝食").matching(NSPredicate(format:"label CONTAINS %@", "全粒粉パン")).firstMatch
+        let header=app.buttons.matching(NSPredicate(format:"identifier == %@ AND label BEGINSWITH %@", "food-history-朝食", "朝食")).firstMatch
+        XCTAssertTrue(breakfast.waitForExistence(timeout:3)); mockProof("p86-history-before-fold")
+        reveal(header,app:app); header.tap()
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:breakfast)],timeout:3),.completed)
+        header.tap(); XCTAssertTrue(breakfast.waitForExistence(timeout:3))
+        mockProof("p86-history"); back(app)
+        tab("その他",app:app); XCTAssertTrue(app.staticTexts["同期済み"].waitForExistence(timeout:5))
+        mockProof("p86-other")
+        tap("記録と成績",app:app); tap("トレーニング",app:app); mockProof("p86-training")
+        tap("種目の成績を見る",app:app); mockProof("p86-grades")
+    }
+
+    func testMockFoodSettingsMenuKeepsDateCatalogAndPreferencesReachable() {
+        let app=launch(["--p4-preview", "--light"])
+        tap("記録する日を選ぶ",app:app); XCTAssertTrue(app.navigationBars["記録する日"].waitForExistence(timeout:5)); tap("完了",app:app)
+        tap("プリセットを編集",app:app); XCTAssertTrue(app.buttons["食品を追加"].waitForExistence(timeout:5)); tap("閉じる",app:app)
+        tap("並びを固定・変更",app:app); XCTAssertTrue(app.buttons["この順で固定"].waitForExistence(timeout:5)); back(app)
+        tap("食事の記録設定",app:app); XCTAssertTrue(app.navigationBars["食事の記録設定"].waitForExistence(timeout:5)); back(app)
+        let total=app.staticTexts.matching(identifier:"175").firstMatch; reveal(total,app:app); XCTAssertTrue(total.exists)
+        proof(app,"p86-food-menu-and-preserved-total")
+    }
+
+    func testWaterAdditionUndoAndDetailKeepFoodTotal() {
+        let app=launch(["--p7-preview","--light"])
+        tab("食事",app:app);tap("water-add",app:app)
+        XCTAssertTrue(app.staticTexts["250"].exists)
+        tap("water-undo",app:app)
+        let zero=app.staticTexts.matching(identifier:"0").firstMatch
+        XCTAssertTrue(zero.waitForExistence(timeout:3))
+        tap("記録・設定",app:app)
+        XCTAssertTrue(app.textFields["water-step-input"].waitForExistence(timeout:3))
+        XCTAssertTrue(app.textFields["water-goal-input"].exists)
+        proof(app,"p84-water-settings")
+    }
+    func testFoodLabelConfirmationCreatesPresetWithoutExternalAnalysis() {
+        let app=launch(["--p4-preview","--light"])
+        tap("検索と記録の設定",app:app);tap("成分表示から登録",app:app)
+        tap("food-label-preview-sample",app:app)
+        let name=app.textFields["food-label-name"];reveal(name,app:app);name.tap();name.typeText("架空バー")
+        let confirm=app.switches["food-label-reviewed"];reveal(confirm,app:app);confirm.tap()
+        tap("food-label-save",app:app)
+        XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.buttons["food-label-save"])],timeout:3),.completed)
+        proof(app,"p84-label-registered")
+    }
+    func testReferenceFoodSourceAndConfirmationAreVisible() {
+        let app=launch(["--p4-preview","--light"])
+        tap("検索と記録の設定",app:app);tap("食品成分表から登録",app:app)
+        let search=app.searchFields.firstMatch;XCTAssertTrue(search.waitForExistence(timeout:3));search.tap();search.typeText("07107")
+        tap("reference-food-row-07107",app:app)
+        XCTAssertTrue(app.textFields["reference-food-quantity"].waitForExistence(timeout:3))
+        proof(app,"p84-reference-food-confirmation")
+    }
+    func testEnergyReviewShowsMissingEvidenceWithoutChangingTarget() {
+        let app=launch(["--p7-preview","--light"])
+        tab("その他",app:app);tap("energy-review-link",app:app)
+        XCTAssertTrue(app.switches["energy-review-morning-confirmation"].waitForExistence(timeout:3))
+        proof(app,"p84-energy-review")
+        back(app);tab("ホーム",app:app);XCTAssertTrue(app.staticTexts["/ 2,000 kcal"].exists)
+    }
+
 }

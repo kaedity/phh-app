@@ -26,9 +26,9 @@ import PHHHubCore
         }
         let c = Bundle.main.url(forResource: "Connection", withExtension: "plist").flatMap { NSDictionary(contentsOf: $0) } ?? [:]
         clientID = c["GoogleClientID"] as? String ?? ""; deploymentID = c["DeploymentID"] as? String ?? ""; scopes = c["Scopes"] as? [String] ?? []; ownerEmail = c["OwnerEmail"] as? String ?? ""
-        environmentSafe = c["Environment"] as? String == hubEnvironment && c["RealDataEnabled"] as? Bool == false
+        environmentSafe = c["Environment"] as? String == hubEnvironment && c["RealDataEnabled"] is Bool
         if !clientID.isEmpty { GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID) }
-        if c["Environment"] as? String != hubEnvironment || c["RealDataEnabled"] as? Bool != false { authMessage = "環境設定を確認してください" }
+        if !environmentSafe { authMessage = "環境設定を確認してください" }
     }
     private func accept(_ user: GIDGoogleUser) {
         connected = user.profile?.email.lowercased() == ownerEmail.lowercased() && Set(scopes).isSubset(of: Set(user.grantedScopes ?? []))

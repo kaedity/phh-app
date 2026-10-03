@@ -65,13 +65,14 @@ function hubP4PersistMeal_(store,r,op,now) {
   }
 }
 function hubP4ApplyMeal_(store,op,now) {
+  hubP4CheckData_(store.config,op);
   hubCheckRequest_(store.config,op);hubKeys_(op,['schema_version','environment','operation_id','action','entity_id','expected_revision','approval_state','synthetic','payload']);
   ensure_(hubIsId_(op.operation_id) && hubIsId_(op.entity_id),'INVALID_ID');const hash=hubHash_(op),old=store.get('Operations',op.operation_id);if(old){ensure_(old.content_hash===hash,'OPERATION_ID_REUSED');return hubOperationResult_(store,op.operation_id);}
   const state=hubEmptyState_(),idx=store.get('RecordIndex',op.entity_id);if(idx?.local_date)hubLoadDate_(store,idx.local_date,state);const prior=state.records[op.entity_id];let r,foodChanges=[];
   try{
-    ensure_(op.approval_state==='confirmed' && op.synthetic===true,'CONFIRMATION_REQUIRED');hubP4ValidateMealSnapshot_(op.payload);
+    ensure_(op.approval_state==='confirmed','CONFIRMATION_REQUIRED');hubP4ValidateMealSnapshot_(op.payload);
     ensure_(op.payload.id===op.entity_id && Number.isSafeInteger(op.expected_revision) && op.expected_revision>=0 && op.payload.revision===op.expected_revision+1,'INVALID_REVISION');
-    const expected=op.expected_revision===0?'confirm_food_meal':op.payload.removed?'remove_food_meal':'update_food_meal';ensure_(op.action===expected && (prior || !op.payload.removed),'INVALID_ACTION');ensure_((prior?.revision ?? 0)===op.expected_revision && (op.expected_revision===0?!idx:prior?.type==='meal' && prior.status==='active'),'REVISION_CONFLICT');
+    const expected=op.expected_revision===0?'confirm_food_meal':op.payload.removed?'remove_food_meal':'update_food_meal';ensure_(op.action===expected && (prior || !op.payload.removed),'INVALID_ACTION');ensure_((prior?.revision ?? 0)===op.expected_revision && (op.expected_revision===0?!idx:prior?.type==='meal' && (prior.status==='active' || prior.status==='removed' && op.action==='update_food_meal' && !op.payload.removed)),'REVISION_CONFLICT');
     for(const item of op.payload.items){const owner=store.get('MealItems',item.id),index=store.get('RecordIndex',item.id);ensure_((!owner || owner.meal_id===op.entity_id) && (!index || index.table_name==='MealItems' && index.parent_id===op.entity_id),'ITEM_ID_REUSED');if(item.versionID)ensure_(store.get('FoodVersions',item.versionID),'MISSING_FOOD_VERSION');}
     if(op.payload.presetID){const p=store.get('Presets',op.payload.presetID);ensure_(p && p.revision>=op.payload.presetRevision,'MISSING_PRESET');}
     r=hubP4RootRecord_(op.payload,prior,now);hubLoadDate_(store,r.date,state);const others=Object.values(state.records).filter(x=>x.id!==r.id && x.type==='meal' && x.status==='active' && x.date===r.date && x.slot===r.slot && x.name===r.name);if(others.some(x=>x.no===r.no))r.no=Math.max(...others.map(x=>x.no))+1;
@@ -83,12 +84,13 @@ function hubP4ApplyMeal_(store,op,now) {
 // カタログの変更は摂取済み明細を変更しません。食品版は追加のみです。
 function hubP4CatalogTable_(action) {return {save_food_version:'FoodVersions',save_food_category:'Categories',save_food_preset:'Presets'}[action];}
 function hubP4ApplyCatalog_(store,op,now) {
+  hubP4CheckData_(store.config,op);
   hubCheckRequest_(store.config,op);hubKeys_(op,['schema_version','environment','operation_id','action','entity_id','expected_revision','approval_state','synthetic','payload']);
   ensure_(hubIsId_(op.operation_id) && hubIsId_(op.entity_id),'INVALID_ID');const table=hubP4CatalogTable_(op.action);ensure_(table,'INVALID_ACTION');
   const hash=hubHash_(op),receipt=store.get('Operations',op.operation_id);if(receipt){ensure_(receipt.content_hash===hash,'OPERATION_ID_REUSED');return hubOperationResult_(store,op.operation_id);}
   const old=store.get(table,op.entity_id);let rows,root;
   try{
-    ensure_(op.approval_state==='confirmed' && op.synthetic===true,'CONFIRMATION_REQUIRED');ensure_(Number.isSafeInteger(op.expected_revision) && op.expected_revision>=0 && (old?.revision ?? 0)===op.expected_revision,'REVISION_CONFLICT');
+    ensure_(op.approval_state==='confirmed','CONFIRMATION_REQUIRED');ensure_(Number.isSafeInteger(op.expected_revision) && op.expected_revision>=0 && (old?.revision ?? 0)===op.expected_revision,'REVISION_CONFLICT');
     const p=op.payload;ensure_(p?.id===op.entity_id,'INVALID_ID');const index=store.get('RecordIndex',p.id);ensure_(!index || index.table_name===table,'ENTITY_ID_REUSED');
     const common={id:p.id,revision:op.expected_revision+1,status:'active',created_at:old?.created_at || new Date(now).toISOString(),updated_at:new Date(now).toISOString(),source_kind:'app',last_operation_id:op.operation_id};
     ensure_(typeof p.name==='string' && p.name.trim().length>0 && p.name.length<=200,'INVALID_VALUE');

@@ -12,8 +12,12 @@
         try! hub.apply(page);let common=FoodHubStore(hub:hub);try! common.saveCatalog(FoodPreviewData.catalog)
         _model=State(initialValue:try! FoodScreenModel(store:common,onSaved:{}));return
       }
+      var catalog = empty ? try! FoodCatalog() : FoodPreviewData.catalog
+      if ProcessInfo.processInfo.arguments.contains("--large-preset") {
+        try! catalog.save(FoodPreset(name: "架空の5倍", components: [.init(versionID: FoodPreviewData.bread.id, factor: 5)]))
+      }
       let state = try! FoodLocalState(
-        catalog: empty ? .init() : FoodPreviewData.catalog,
+        catalog: catalog,
         confirmed: empty ? [] : FoodPreviewData.meals)
       _model = State(initialValue: FoodScreenModel(store: try! FoodLocalStore(initial: state)))
     }
@@ -21,7 +25,10 @@
       NavigationStack {
         FoodHubPage(
           model: model, date: FoodDates.date("2026-10-02"),
-          analyze: { _, _ in
+          analyze: { jpegs, note in
+            if ProcessInfo.processInfo.arguments.contains("--multi-photo-check") {
+              guard jpegs.count==2, note.contains("スープは半分") else { throw FoodFailure.invalidValue }
+            }
             var draft = try FoodDraft.fromAnalysisJSON(FoodPreviewData.analysis)
             if ProcessInfo.processInfo.arguments.contains("--no-questions") { draft.questions = [] }
             return draft

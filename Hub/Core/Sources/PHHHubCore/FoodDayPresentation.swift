@@ -34,6 +34,10 @@ public struct FoodDayPresentation: Equatable, Sendable {
             // 送信済みの追加の取消は、同じIDの確定→取消の順で送ります。
             if operation.undoRequested && operation.expectedRevision == 0 {
                 projected.removeValue(forKey: operation.meal.id)
+            } else if operation.undoRequested, let restoration = operation.undoReplacement {
+                projected[operation.meal.id] = try FoodMeal(id: restoration.id, revision: operation.expectedRevision,
+                    date: restoration.date, slot: restoration.slot, items: restoration.items, removed: restoration.removed,
+                    presetID: restoration.presetID, presetRevision: restoration.presetRevision)
             } else {
                 projected[operation.meal.id] = operation.meal
             }
@@ -49,16 +53,16 @@ extension FoodTotal {
     public func includingSupplements(_ days: [SupplementDay], date: String) throws -> FoodTotal {
         try FoodRules.date(date)
         guard Set(days.map(\.id)).count == days.count else { throw FoodFailure.duplicateID }
-        var known = self.known, missing = self.missing
+        var known = self.known, missing = self.missing, counts = self.knownCount
         for day in days where day.date == date && day.isCounted {
             try day.validate()
             for nutrient in FoodNutrient.allCases {
                 let value = day.nutrients.first { $0.nutrientID == nutrient.rawValue }?.value
-                if let value { known[nutrient, default: 0] += value }
+                if let value { known[nutrient, default: 0] += value; counts[nutrient,default:0] += 1 }
                 else { missing[nutrient, default: 0] += 1 }
             }
         }
-        return .init(known: known, missing: missing)
+        return .init(known: known, missing: missing, knownCount: counts)
     }
     public func goalValues() throws -> GoalValues {
         func value(_ nutrient: FoodNutrient) -> Double? {

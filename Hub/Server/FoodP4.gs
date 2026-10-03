@@ -50,10 +50,14 @@ function hubP4DayTotal_(records,date) {
   return {known:sum,missing};
 }
 // ローカル契約の状態遷移。Googleのストア/既存Outboxへは未接続です。
-function hubP4Transition_(state,op) {
+function hubP4CheckData_(config,op) {
+  ensure_(typeof op.synthetic==='boolean','INVALID_OPERATION');
+  ensure_(op.synthetic || config?.real_data_enabled===true,'REAL_DATA_DISABLED');
+}
+function hubP4Transition_(state,op,config=null) {
   hubKeys_(op,['schema_version','environment','operation_id','entity_id','expected_revision','action','approval_state','synthetic','payload']);
   ensure_(op.schema_version===1 && ['PHH_TEST','PHH_PRODUCTION'].includes(op.environment) && state.environment===op.environment,'ENVIRONMENT_MISMATCH');
-  ensure_(op.synthetic===true && op.approval_state==='confirmed','CONFIRMATION_REQUIRED');
+  hubP4CheckData_(config,op);ensure_(op.approval_state==='confirmed','CONFIRMATION_REQUIRED');
   ensure_(hubIsId_(op.operation_id) && hubIsId_(op.entity_id),'INVALID_ID');ensure_(Number.isSafeInteger(op.expected_revision) && op.expected_revision>=0,'INVALID_REVISION');
   ensure_(Array.isArray(state.records) && state.operations && typeof state.operations==='object','INVALID_STATE');const ids=new Set();for(const meal of state.records){hubP4ValidateMealSnapshot_(meal);ensure_(!ids.has(meal.id),'INVALID_STATE');ids.add(meal.id);}
   const previous=state.operations[op.operation_id],hash=hubHash_(op);if(previous){ensure_(previous.hash===hash,'OPERATION_ID_REUSED');return {state:hubClone_(state),receipt:hubClone_(previous.receipt)};}

@@ -3,6 +3,9 @@ import GoogleSignIn
 @main struct HubApp: App {
     @UIApplicationDelegateAdaptor(HealthAppDelegate.self) private var appDelegate
     init() {
+        #if DEBUG
+        NumericHistory.resetSyntheticIfRequested()
+        #endif
         let preview=ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("--p") && $0.hasSuffix("-preview") }
         HealthAppDelegate.makeRuntime = preview ? nil : { HubModel.shared.healthRuntime }
     }

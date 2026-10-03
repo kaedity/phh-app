@@ -46,6 +46,10 @@ import Testing
     }
     @Test func knownPartialTotalsAndZeroRemainDistinctFromMissingWhenAddingSupplement() throws {
         let food = try FoodDayPresentation(date: day, snapshot: snapshot([meal(nil)], [])).localTotal
+        #expect(food.displayValue(for:.kcal) == nil)
+        #expect(FoodTotal(items:[]).displayValue(for:.kcal) == 0)
+        let knownZero = try FoodTotal.day(day,meals:[meal(0),meal(nil)])
+        #expect(knownZero.displayValue(for:.kcal) == 0 && knownZero.missing[.kcal] == 1)
         let product = try SupplementProductVersion(productID: UUID().uuidString, name: "架空のサプリ", referenceAmount: 1, unit: "個", nutrients: [
             .init(nutrientID: "kcal", value: 20, unit: "kcal", source: "本人"), .init(nutrientID: "protein", value: 1, unit: "g", source: "本人"),
             .init(nutrientID: "fat", value: 0, unit: "g", source: "本人"), .init(nutrientID: "carbohydrate", value: nil, unit: "g", source: "本人")])
@@ -55,6 +59,9 @@ import Testing
         let supplement = ledger.days[0]
         let total = try food.includingSupplements([supplement], date: day)
         #expect(total.known[.kcal] == 20); #expect(total.missing[.kcal] == 1)
+        #expect(total.displayValue(for:.kcal) == 20 && total.displayValue(for:.carbohydrate) == 15)
+        let supplementOnly = try FoodTotal(items:[]).includingSupplements([supplement],date:day)
+        #expect(supplementOnly.displayValue(for:.fat) == 0 && supplementOnly.displayValue(for:.carbohydrate) == nil)
         #expect(total.known[.fat] == 0); #expect(try total.goalValues().fat == 0)
         #expect(try total.goalValues().kcal == nil); #expect(try total.goalValues().carbohydrate == nil)
     }

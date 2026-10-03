@@ -250,11 +250,11 @@ public struct FoodCatalog: Codable, Equatable, Sendable {
     try copy.validate()
     self = copy
   }
-  public func visiblePresets(query: String = "", categoryID: String? = nil) -> [FoodPreset] {
+  public func visiblePresets(query: String = "", categoryID: String? = nil, aliases: [String: [String]] = [:]) -> [FoodPreset] {
     presets.filter { p in
       !p.archived && (categoryID == nil || p.categoryID == categoryID)
         && !(p.categoryID.flatMap { id in categories.first { $0.id == id } }?.archived ?? false)
-        && (query.isEmpty || p.name.localizedStandardContains(query))
+        && JapaneseSearch.matches(p.name, query: query, aliases: aliases[p.id] ?? [])
     }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }
   public func snapshot(_ presetID: String) throws -> [FoodItemSnapshot] {
@@ -315,18 +315,26 @@ public struct FoodMeal: Codable, Equatable, Identifiable, Sendable {
 }
 public struct FoodTotal: Equatable, Sendable {
   public let known: [FoodNutrient: Double], missing: [FoodNutrient: Int]
-  init(known: [FoodNutrient: Double], missing: [FoodNutrient: Int]) {
-    self.known = known; self.missing = missing
+  public let knownCount: [FoodNutrient: Int]
+  init(known: [FoodNutrient: Double], missing: [FoodNutrient: Int], knownCount: [FoodNutrient: Int]) {
+    self.known = known; self.missing = missing; self.knownCount=knownCount
   }
   public init(items: [FoodItemSnapshot]) {
     var sums: [FoodNutrient: Double] = [:]
     var unknown: [FoodNutrient: Int] = [:]
+    var counts: [FoodNutrient: Int] = [:]
     for k in FoodNutrient.allCases {
       sums[k] = items.compactMap { $0.nutrients[k] }.reduce(0, +)
       unknown[k] = items.filter { $0.nutrients[k] == nil }.count
+      counts[k] = items.count - unknown[k]!
     }
     known = sums
     missing = unknown
+    knownCount = counts
+  }
+  /// 全て不明なら空欄。既知の0や、空の記録一覧の0は保持します。
+  public func displayValue(for nutrient: FoodNutrient) -> Double? {
+    (missing[nutrient] ?? 0) > 0 && (knownCount[nutrient] ?? 0) == 0 ? nil : known[nutrient]
   }
   public static func day(_ date: String, meals: [FoodMeal]) -> Self {
     .init(items: meals.filter { !$0.removed && $0.date == date }.flatMap(\.items))

@@ -5,7 +5,7 @@ struct HealthPreviewRoot: View {
     @State private var screen: HealthScreenModel?
     @State private var issue: String?
     var body: some View {
-        NavigationStack { if let screen { HealthDetailPage(screen: screen) } else { Text(issue ?? "合成データを準備しています") } }.tint(pine)
+        NavigationStack { if let screen { if ProcessInfo.processInfo.arguments.contains("--weight") { HealthWeightPage(screen: screen) } else { HealthDetailPage(screen: screen) } } else { Text(issue ?? "合成データを準備しています") } }.tint(pine)
             .task { guard screen == nil else { return }; do {
                 let store = try HubStore(owner: "synthetic-health-preview@example.test"), now = Date(), device = UUID().uuidString
                 let source = try HealthSource(id: "synthetic.eufy", name: "Eufy · 架空データ", device: "P2 Pro")

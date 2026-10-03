@@ -3,12 +3,12 @@ import PhotosUI
 import SwiftUI
 
 struct FoodAnalysisPage: View {
-  let date: String, slot: String, analyze: ((Data?, String) async throws -> FoodDraft)?,
+  let date: String, slot: String, analyze: (([Data], String) async throws -> FoodDraft)?,
     save: (FoodDraft) throws -> Void
   @Environment(\.dismiss) private var dismiss
   @State private var note = ""
-  @State private var image: Data?
-  @State private var selectedPhoto: PhotosPickerItem?
+  @State private var images: [Data] = []
+  @State private var selectedPhotos: [PhotosPickerItem] = []
   @State private var draft: FoodDraft?
   @State private var busy = false
   @State private var saving = false
@@ -22,7 +22,7 @@ struct FoodAnalysisPage: View {
   @State private var task: Task<Void, Never>?
   @State private var photoTask: Task<Void, Never>?
   init(
-    date: String, slot: String, analyze: ((Data?, String) async throws -> FoodDraft)?,
+    date: String, slot: String, analyze: (([Data], String) async throws -> FoodDraft)?,
     initialNote: String = "", plateAnalyze: SharedPlateAnalyzer? = nil, platePreview: Bool = false, plateSave: ((FoodDraft, String, String, String) throws -> Void)? = nil, save: @escaping (FoodDraft) throws -> Void
   ) {
     self.date = date
@@ -34,20 +34,92 @@ struct FoodAnalysisPage: View {
   }
   var body: some View {
     Form {
-      Section("\(date) · \(slot)") {
-        TextField("食事の内容・量・商品の補足", text: $note, axis: .vertical).lineLimit(3...7)
-          .accessibilityIdentifier("food-analysis-note")
-        if let image, let ui = UIImage(data: image) {
-          Image(uiImage: ui).resizable().scaledToFit().frame(maxHeight: 180)
-          Button("写真を外す", role: .destructive) {
-            releasePhoto()
+      inputSection
+      Section {
+        Button("食べる前と後の2枚で記録") { plate = true }
+          .disabled(busy).accessibilityIdentifier("shared-plate-entry")
+      }
+      if let draft { draftSections(draft) }
+      if !error.isEmpty { Section { Text(error).foregroundStyle(.red) } }
+    }.navigationTitle("食事を確認").navigationBarTitleDisplayMode(.inline).toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("閉じる") {
+          task?.cancel()
+          releasePhoto()
+          dismiss()
+        }
+      }
+    }.onChange(of: selectedPhotos) { _, photos in
+      guard !photos.isEmpty else { return }
+      photoTask?.cancel()
+      photoTask = Task {
+        do {
+          var next: [Data] = []
+          for photo in photos {
+            guard let data=try await photo.loadTransferable(type: Data.self), let ui=UIImage(data: data),
+                  let jpeg=ui.jpegData(compressionQuality: 0.7) else { throw FoodFailure.invalidValue }
+            try Task.checkCancellation(); next.append(jpeg)
+          }
+          images=try FoodPhotoBatch(next).jpegs; error=""
+        } catch is CancellationError {} catch { self.error="写真は4枚・合計20MB以内で選んでください。読み込めない写真は別の写真でお試しください。" }
+        selectedPhotos=[]
+      }
+    }.sheet(isPresented: $plate) {
+      NavigationStack {
+        SharedPlatePage(date: date, slot: slot, analyze: plateAnalyze, preview: platePreview) { next, day, mealSlot, identity in
+          if let plateSave { try plateSave(next, day, mealSlot, identity) } else { try save(next) }
+          releasePhoto(); dismiss()
+        }
+      }
+    }.sheet(item: $editing) { i in
+      NavigationStack {
+        FoodDraftItemEditor(item: i) { next in
+          if let index = draft?.items.firstIndex(where: { $0.id == i.id }) {
+            draft?.items[index] = next
           }
         }
+      }
+    }.sheet(isPresented: $camera) {
+      FoodCamera { data in
+        if let data {
+          do { images=try FoodPhotoBatch(images+[data]).jpegs }
+          catch { self.error="写真は4枚・合計20MB以内で選んでください。" }
+        }
+        camera = false
+      }
+    }.onDisappear {
+      task?.cancel()
+      photoTask?.cancel()
+      releasePhoto()
+    }
+  }
+  private var inputSection: some View {
+      Section("\(date) · \(slot)") {
+        TextField("食事の内容・量・商品の補足", text: $note, axis: .vertical).lineLimit(3...7)
+          .accessibilityIdentifier("food-analysis-note").disabled(busy)
+        if !images.isEmpty { Text("同じ1食の写真 \(images.count)枚").font(.caption).foregroundStyle(.secondary) }
+        ForEach(Array(images.enumerated()), id: \.offset) { index, data in
+          if let ui = UIImage(data: data) {
+            Image(uiImage: ui).resizable().scaledToFit().frame(maxHeight: 150)
+            Button("写真\(index+1)を外す", role: .destructive) { images.remove(at: index) }.disabled(busy)
+          }
+        }
+        #if DEBUG
+        if platePreview {
+          Button("架空の写真を2枚追加") {
+            images = [UIColor.systemGreen, .systemOrange].map { color in
+              UIGraphicsImageRenderer(size: .init(width: 120, height: 80)).image { context in
+                color.setFill(); context.fill(.init(x: 0, y: 0, width: 120, height: 80))
+              }.jpegData(compressionQuality: 0.7)!
+            }
+          }.disabled(busy)
+        }
+        #endif
         HStack {
           if UIImagePickerController.isSourceTypeAvailable(.camera) {
-            Button("撮影", systemImage: "camera") { camera = true }
+            Button("撮影", systemImage: "camera") { camera = true }.disabled(images.count >= 4)
           }
-          PhotosPicker(selection: $selectedPhoto, matching: .images) {
+          PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 4, selectionBehavior: .ordered, matching: .images) {
             Label("写真を選ぶ", systemImage: "photo")
           }
         }.buttonStyle(.borderless).disabled(busy)
@@ -63,13 +135,11 @@ struct FoodAnalysisPage: View {
           }
         }.disabled(
           busy || analyze == nil
-            || (image == nil && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+            || (images.isEmpty && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
       }
-      Section {
-        Button("食べる前と後の2枚で記録") { plate = true }
-          .disabled(busy).accessibilityIdentifier("shared-plate-entry")
-      }
-      if let draft {
+  }
+
+  @ViewBuilder private func draftSections(_ draft: FoodDraft) -> some View {
         Section("確認前の推定 · 合計には未反映") {
           if draft.items.isEmpty {
             Text("食品を確認できませんでした。文章を補足して再解析してください。").foregroundStyle(.secondary)
@@ -122,73 +192,25 @@ struct FoodAnalysisPage: View {
             } catch { saving=false; self.error = error.localizedDescription }
           } label: { MotionSaveLabel(title: "確認して記録", busy: saving) }.disabled(busy || saving || draft.items.isEmpty).accessibilityLabel("確認して記録").accessibilityIdentifier("food-analysis-confirm")
         }
-      }
-      if !error.isEmpty { Section { Text(error).foregroundStyle(.red) } }
-    }.navigationTitle("食事を確認").navigationBarTitleDisplayMode(.inline).toolbar {
-      ToolbarItem(placement: .cancellationAction) {
-        Button("閉じる") {
-          task?.cancel()
-          releasePhoto()
-          dismiss()
-        }
-      }
-    }.onChange(of: selectedPhoto) { _, photo in
-      guard let photo else { return }
-      photoTask?.cancel()
-      photoTask = Task {
-        do {
-          guard let data = try await photo.loadTransferable(type: Data.self),
-            let ui = UIImage(data: data), let jpeg = ui.jpegData(compressionQuality: 0.7),
-            jpeg.count <= 10_000_000
-          else { throw FoodFailure.invalidValue }
-          try Task.checkCancellation()
-          image = jpeg
-          error = ""
-        } catch is CancellationError {} catch { self.error = "写真を読み込めませんでした。" }
-        selectedPhoto = nil
-      }
-    }.sheet(isPresented: $plate) {
-      NavigationStack {
-        SharedPlatePage(date: date, slot: slot, analyze: plateAnalyze, preview: platePreview) { next, day, mealSlot, identity in
-          if let plateSave { try plateSave(next, day, mealSlot, identity) } else { try save(next) }
-          releasePhoto(); dismiss()
-        }
-      }
-    }.sheet(item: $editing) { i in
-      NavigationStack {
-        FoodDraftItemEditor(item: i) { next in
-          if let index = draft?.items.firstIndex(where: { $0.id == i.id }) {
-            draft?.items[index] = next
-          }
-        }
-      }
-    }.sheet(isPresented: $camera) {
-      FoodCamera { data in
-        if (data?.count ?? 0) <= 10_000_000 { image = data } else { error = "写真の容量を小さくしてください。" }
-        camera = false
-      }
-    }.onDisappear {
-      task?.cancel()
-      photoTask?.cancel()
-      releasePhoto()
-    }
   }
+
   private func releasePhoto() {
     photoTask?.cancel()
     photoTask = nil
-    image = nil
-    selectedPhoto = nil
+    images = []
+    selectedPhotos = []
   }
   private func runAnalysis() {
     guard let analyze else { return }
     busy = true
     error = ""
-    let jpeg = image
+    let jpegs = images
     let text = note
     task = Task {
       do {
         guard text.count <= 8000 else { throw FoodFailure.invalidValue }
-        let next = try await analyze(jpeg, text)
+        let batch=try FoodPhotoBatch(jpegs)
+        let next = try await analyze(batch.jpegs, text)
         try Task.checkCancellation()
         draft = next
         releasePhoto()

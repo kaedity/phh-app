@@ -3,7 +3,7 @@ import Charts
 import PHHHubCore
 
 private func healthNumber(_ value: Double?, digits: Int = 1) -> String { value.map { $0.formatted(.number.precision(.fractionLength(0...digits))) } ?? "—" }
-private func sleepDuration(_ seconds: Double?) -> String {
+func sleepDuration(_ seconds: Double?) -> String {
     guard let seconds else { return "—" }; let minutes = Int(seconds / 60)
     return "\(minutes / 60)時間\(minutes % 60)分"
 }
@@ -68,38 +68,50 @@ struct HealthWeightPage: View {
     }
     var body: some View {
         Page(title: "体重") {
+            MotionSegments(title: "表示期間", selection: $period, options: [(7,"7日"),(30,"30日"),(0,"全期間")])
+            VStack(spacing: 4) {
+                MockFigure(value: healthNumber(screen.latestWeight?.value), unit: "kg", size: 52)
+                if let sample = screen.latestWeight { Text(mockDayTime(sample.start)).font(.subheadline).foregroundStyle(.secondary); Text("\(sample.source.name)経由").font(.caption).foregroundStyle(pine) }
+                if screen.readState(.bodyMass) != .available { Text(stateTitle(screen.readState(.bodyMass))).font(.caption).foregroundStyle(.secondary) }
+            }.frame(maxWidth: .infinity)
             Card {
-                Text("最新の測定").font(.subheadline).foregroundStyle(.secondary)
-                Text("\(healthNumber(screen.latestWeight?.value)) kg").font(.system(size: 38, weight: .semibold, design: .rounded))
-                if let sample = screen.latestWeight { Text("\(healthTime(sample.start)) · \(sample.source.name)").font(.caption).foregroundStyle(.secondary) }
-                Text(stateTitle(screen.readState(.bodyMass))).font(.caption).foregroundStyle(.secondary)
-                if !screen.weightSources.isEmpty {
-                    Menu {
-                        ForEach(screen.weightSources, id: \.id) { source in Button(source.name) { screen.selectedWeightSource = source.id } }
-                    } label: { Label("取得元を選ぶ", systemImage: "chevron.up.chevron.down") }
-                }
-            }
-            Card {
-                MotionSegments(title: "表示期間", selection: $period, options: [(7,"7日"),(30,"30日"),(0,"全期間")])
                 if points.isEmpty { ContentUnavailableView("測定値がありません", systemImage: "scalemass", description: Text("欠測は0 kgとして扱いません。")) }
                 else {
                     Chart(points) { point in
                         RuleMark(x: .value("日付", point.date), yStart: .value("最小", point.day.minimum), yEnd: .value("最大", point.day.maximum)).foregroundStyle(pine.opacity(0.3))
                         LineMark(x: .value("日付", point.date), y: .value("代表値", point.day.value), series: .value("連続した日", point.segment)).foregroundStyle(pine)
-                        PointMark(x: .value("日付", point.date), y: .value("代表値", point.day.value)).foregroundStyle(pine)
-                    }.chartYScale(domain: .automatic(includesZero: false)).chartXSelection(value: $selectedDate).dynamicTypeSize(...DynamicTypeSize.xxxLarge).frame(height: 200).modifier(MotionChartReveal(key: String(period)))
+                        PointMark(x: .value("日付", point.date), y: .value("代表値", point.day.value)).foregroundStyle(pine).symbolSize(28)
+                    }.chartYScale(domain: .automatic(includesZero: false)).chartYAxisLabel("kg").chartXSelection(value: $selectedDate).dynamicTypeSize(...DynamicTypeSize.xxxLarge).frame(height: 200).modifier(MotionChartReveal(key: String(period)))
                     if let selectedDate, let nearest = points.min(by: { abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate)) }) {
-                        Text("\(nearest.day.date) · \(healthNumber(nearest.day.value)) kg · 範囲 \(healthNumber(nearest.day.minimum))–\(healthNumber(nearest.day.maximum)) kg").font(.caption)
+                        Text("\(mockDay(nearest.day.date)) · \(healthNumber(nearest.day.value)) kg · 範囲 \(healthNumber(nearest.day.minimum))–\(healthNumber(nearest.day.maximum)) kg").font(.caption)
                     }
-                    Text("点はその日の最後の測定、縦線は読み込み済み測定の範囲です。欠測日は線をつなぎません。").font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 4) { Text("点はその日の最後の測定です").font(.caption).foregroundStyle(.secondary); MotionInfo(text: "縦線はその日に読み込んだ測定の範囲です。測っていない日は線をつなぎません。") }
                 }
             }
-            AccessibleRow { Text("測定履歴").font(.headline); Text("\(screen.weightSamples.count) / \(screen.weightTotalCount)件").font(.caption).foregroundStyle(.secondary) }
-            ForEach(screen.selectedWeightSamples) { sample in
-                Card { AccessibleRow { Text("\(healthNumber(sample.value)) kg").font(.title3.weight(.semibold)); Text(healthTime(sample.start)).font(.caption).foregroundStyle(.secondary) }; Text(sample.source.name).font(.caption).foregroundStyle(.secondary) }
+            HStack { Text("測定履歴").font(.headline); Spacer()
+                if screen.weightSources.count > 1 { Menu { ForEach(screen.weightSources, id: \.id) { source in Button(source.name) { screen.selectedWeightSource = source.id } } } label: { Label("取得元", systemImage: "chevron.up.chevron.down").font(.caption) } }
+            }
+            let samples = Array(screen.selectedWeightSamples)
+            if !samples.isEmpty {
+                MockRows { ForEach(Array(samples.enumerated()), id: \.element.id) { index, sample in
+                    VStack(spacing: 0) {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) {
+                                Text(mockDayTime(sample.start)).font(.body.weight(.medium)).fixedSize()
+                                Spacer(minLength: 8)
+                                Text("\(healthNumber(sample.value)) kg").font(.body.weight(.semibold)).fixedSize()
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(mockDayTime(sample.start)).font(.body.weight(.medium))
+                                Text("\(healthNumber(sample.value)) kg").font(.body.weight(.semibold)).fixedSize(horizontal: true, vertical: false)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                        }.padding(.horizontal, 16).padding(.vertical, 13)
+                        if index < samples.count-1 { Divider().padding(.leading, 16) }
+                    }
+                } }
             }
             if screen.hasMoreWeight { Button("前の測定を読み込む") { do { try screen.loadMoreWeight() } catch { message = "履歴を取得できませんでした。表示済みの測定は保持しています。" } }.buttonStyle(.bordered).frame(maxWidth: .infinity) }
-            if let oldest = screen.oldestLoadedDate { Text("読み込み済みの最古日：\(oldest)").font(.caption).foregroundStyle(.secondary) }
+            if let oldest = screen.oldestLoadedDate { Text("読み込み済みの最古日：\(mockDay(oldest))").font(.caption).foregroundStyle(.secondary) }
             if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
         }
     }

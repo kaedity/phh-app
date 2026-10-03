@@ -8,14 +8,16 @@ function setupHubSchemaP7() {
     const after=hubSchemaInventoryP7_(store,false),expected=hubSchemaHeadersP7_(HUB_SCHEMA_);
     ensure_(stable_(after.map(s=>[s.name,s.columns]).sort((a,b)=>a[0].localeCompare(b[0])))===stable_(expected),'SCHEMA_READBACK_MISMATCH');
     // Sheets batchUpdateで反映済みです。通常のstore.commitへ書込を残しません。
-    return {environment:store.config.environment,status:plan.requests.length?'schema_upgraded':'schema_ready',source_tables:plan.source_tables,target_tables:36,preserved_blank_sheet_ids:before.preserved_blank_sheet_ids,added_tables:plan.added_tables,added_columns:plan.added_columns,request_count:plan.requests.length,header_sha256:hubHash_(expected)};
+    return {environment:store.config.environment,status:plan.requests.length?'schema_upgraded':'schema_ready',source_tables:plan.source_tables,target_tables:Object.keys(HUB_SCHEMA_.tables).length,preserved_blank_sheet_ids:before.preserved_blank_sheet_ids,added_tables:plan.added_tables,added_columns:plan.added_columns,request_count:plan.requests.length,header_sha256:hubHash_(expected)};
   });
 }
 function hubSchemaHeadersP7_(schema) {
   return Object.entries(schema.tables).map(([name,spec])=>[name,spec.columns.map(c=>c.name)]).sort((a,b)=>a[0].localeCompare(b[0]));
 }
 function hubSchemaVersionsP7_() {
-  const schemas=[HUB_BASE_SCHEMA_,HUB_P3_SCHEMA_,HUB_P4_SCHEMA_,HUB_P5_SCHEMA_,HUB_SCHEMA_],counts=[16,18,23,32,36];
+  const schemas=[HUB_BASE_SCHEMA_,HUB_P3_SCHEMA_,HUB_P4_SCHEMA_,HUB_P5_SCHEMA_,typeof HUB_HEALTH_SCHEMA_==='undefined'?HUB_SCHEMA_:HUB_HEALTH_SCHEMA_],counts=[16,18,23,32,36];
+  if(HUB_SCHEMA_.tables.WaterIntakes){schemas.push(HUB_SCHEMA_);counts.push(37)}
+  //;
   schemas.forEach((s,i)=>ensure_(s.schema_version===1 && Object.keys(s.tables).length===counts[i],'SCHEMA_CONTRACT_MISMATCH'));
   // 実装の付加列がnullableでなくなった場合も、物理移行を始める前に拒否します。
   for(const source of schemas)for(const [name,spec]of Object.entries(source.tables)){

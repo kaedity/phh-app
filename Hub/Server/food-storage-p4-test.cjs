@@ -24,5 +24,14 @@ test('B2 move cancel undo restores every item and old/new totals',()=>{const s=f
 test('single explicit unknown zero differs from omitted unknown',()=>{const s=fresh(),m=food();m.items=[m.items[1]];app(s,op(m));assert.equal(intake(s,row('zero','修正','kcal=0; P=なし','2026-10-01','架空食品B'),2,now+600001).status,'保存済み');assert.equal(snapshot(s).items[0].nutrients.kcal,0);assert.equal(snapshot(s).items[0].nutrients.protein,null);assert.equal(s.tables.DailySummary.get('2026-10-01').kcal_unknown,0);});
 test('legacy root upgraded keeps existing child nutrient IDs',()=>{const s=fresh(),o=legacy();app(s,o);const child=[...s.tables.MealItems.values()][0],ids=[...s.tables.IntakeNutrients.keys()],m=food();m.id=o.entity_id;m.revision=2;m.items=[{...m.items[0],id:child.id}];assert.equal(app(s,op(m)).status,'committed');assert.deepEqual([...s.tables.IntakeNutrients.keys()],ids);assert.deepEqual(snapshot(s,o.entity_id),m);});
 test('failed commit leaves complete operation retryable without partial rows',()=>{const s=fresh(),o=op();ctx.hubApplyApp_(s,o,now);s.fail=true;assert.throws(()=>s.commit(),/STORAGE_UNAVAILABLE/);for(const t of ['Meals','MealItems','IntakeNutrients','Operations','DailySummary'])assert.equal(s.tables[t].size,0);s.fail=false;assert.equal(app(s,o).status,'committed');assert.deepEqual(snapshot(s),o.payload);});
+test('app undo restores removed meal with new operation and revision and rejects stale undo',()=>{
+ const s=fresh(),original=food();assert.equal(app(s,op(original,900)).status,'committed');
+ const removed=copy(original);removed.revision=2;removed.removed=true;assert.equal(app(s,op(removed,901)).status,'committed');
+ const restore=copy(original);restore.revision=3;const undo=op(restore,902);assert.equal(app(s,undo).status,'committed');
+ assert.deepEqual(snapshot(s),restore);assert.equal(s.tables.DailySummary.get(original.date).kcal,100);
+ assert.equal(snapshot(s).items[1].nutrients.kcal,null);assert.equal(snapshot(s).items[1].nutrients.fat,0);
+ const count=s.tables.Operations.size;assert.equal(app(s,undo).status,'committed');assert.equal(s.tables.Operations.size,count);
+ const stale=copy(original);stale.revision=3;assert.equal(app(s,op(stale,903)).error_code,'REVISION_CONFLICT');assert.deepEqual(snapshot(s),restore);
+});
 module.exports={ctx,copy,schema,fresh,app,intake,now,id,food,op,snapshot,loaded};
 console.log(`food storage P4: ${passed} passed`);

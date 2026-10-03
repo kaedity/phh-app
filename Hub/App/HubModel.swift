@@ -8,7 +8,7 @@ import PHHHubCore
     private(set) var healthReadEnabled = false
     let google: GoogleTransport; let chatGPT: ChatGPTSession
     let previewOnly: Bool
-    private var store: HubStore?; private var engine: SyncEngine?
+    private(set) var store: HubStore?; private var engine: SyncEngine?
     private var foodSyncRequested=false
     private(set) var busy = false; private(set) var message = "準備しています"
     private(set) var trainingCycles:[TrainingCycleReference] = []
@@ -16,8 +16,11 @@ import PHHHubCore
     private(set) var foodWriteEnabled=false
     private(set) var healthScreen: HealthScreenModel?
     private(set) var autoSleepDeliveries: [AutoSleepDelivery] = []
+    private(set) var lastSynchronizedAt: Date?
     private(set) var planningScreen: PlanningScreenModel?
     private(set) var foodScreen:FoodScreenModel?
+    var realFoodEnabled:Bool { !previewOnly && healthConfiguration()["RealDataEnabled"] as? Bool == true }
+    private(set) var hydrationScreen:HydrationScreenModel?
     private(set) var trainingSnapshot: TrainingSnapshot = .empty
     private(set) var rows: [LocalRow] = []; private(set) var pending: [Pending] = []
     var date: String = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = TimeZone(identifier: "Asia/Tokyo"); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date()) }()
@@ -25,6 +28,8 @@ import PHHHubCore
     #if DEBUG
     init(previewStore: HubStore, empty: Bool, syncing: Bool, failure: Bool) throws {
         previewOnly = true; google = GoogleTransport(offline: true); chatGPT = ChatGPTSession(offline: true)
+        try previewStore.apply(Delta(schema_version:1,environment:hubEnvironment,generation:try previewStore.generation,hydration_contract:1,health_contract:try previewStore.healthContract==1 ? 1:nil,planning_contract:try previewStore.planningContract==1 ? 1:nil,food_contract:try previewStore.foodContract==1 ? 1:nil,training_contract:try previewStore.trainingContract==1 ? 1:nil,snapshot_revision:try previewStore.cursor,changes:[],next_cursor:try previewStore.cursor,has_more:false))
+        hydrationScreen=try HydrationScreenModel(hub:previewStore,synthetic:true,onSaved:{})
         store = previewStore; date = "2026-10-02"
         foodScreen = FoodScreenModel(store: try FoodLocalStore(initial: FoodLocalState(catalog: empty ? .init() : FoodPreviewData.catalog, confirmed: empty ? [] : FoodPreviewData.meals)))
         planningScreen = try PlanningScreenModel(hub: previewStore, onSaved: {})
@@ -32,6 +37,7 @@ import PHHHubCore
         trainingSnapshot = empty ? .empty : TrainingPreviewData.snapshot
         trainingCycles = empty ? [] : [TrainingPreviewData.cycle]
         foodWriteEnabled = true; pending = try previewStore.pending(); busy = syncing
+        if !failure && !syncing { lastSynchronizedAt=TrainingPreviewData.date }
         message = failure ? "取得内容を確認できません。前回の確定値を保持しています。" : syncing ? "同期しています（合成表示）" : "架空データ · 認証と通信なし"
     }
     #endif
@@ -49,8 +55,9 @@ import PHHHubCore
                 do { try self.reloadHealth() } catch { self.message = "健康データの前回値を保持しています" }
                 if self.google.connected, (try? self.pending.contains(where: { pending in guard pending.state == .queued, pending.operation.requiresHealthContract else { return false }; return try store.canSendHealth(pending.operation) })) == true { self.requestFoodSync() }
             })
+            hydrationScreen=try HydrationScreenModel(hub:store,synthetic:healthConfiguration()["RealDataEnabled"] as? Bool != true,onSaved:{[weak self] in self?.requestFoodSync()})
             planningScreen=try PlanningScreenModel(hub:store,onSaved:{[weak self] in self?.requestFoodSync() })
-            foodScreen=try FoodScreenModel(store:FoodHubStore(hub:store),onSaved:{[weak self] in self?.requestFoodSync() });try reload(); message = "架空データの接続確認を行えます"
+            foodScreen=try FoodScreenModel(store:FoodHubStore(hub:store,synthetic:!realFoodEnabled),onSaved:{[weak self] in self?.requestFoodSync() });try reload(); message = realFoodEnabled ? "記録を読み込みました" : "架空データの接続確認を行えます"
         } catch { message = error.localizedDescription }
     }
     private func requestFoodSync() { if busy {foodSyncRequested=true} else {Task {await synchronize()} } }
@@ -115,7 +122,7 @@ import PHHHubCore
         do { try reload() } catch { message = error.localizedDescription }
         let reloadSeconds = ProcessInfo.processInfo.systemUptime - reloadStarted
         let elapsed = Date().timeIntervalSince(started)
-        if engine.message == "同期しました" { message += String(format: "（%.1f秒）", elapsed) }
+        if engine.message == "同期しました" { lastSynchronizedAt=Date(); message += String(format: "（%.1f秒）", elapsed) }
         recordSyncTiming(started: started, elapsed: elapsed, succeeded: engine.message == "同期しました", reloadSeconds: reloadSeconds)
     }
     private func recordSyncTiming(started: Date, elapsed: Double, succeeded: Bool, reloadSeconds: Double) {
@@ -176,7 +183,7 @@ import PHHHubCore
         try healthScreen?.refresh(date:date)
         let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("Hub/AutoSleep", isDirectory: true)
         autoSleepDeliveries = try AutoSleepInbox(url:directory.appendingPathComponent("intake.json")).deliveries()
-        try planningScreen?.refresh();try foodScreen?.refresh();let foodEnabled=try store.foodContract==1
+        try planningScreen?.refresh();try foodScreen?.refresh();try hydrationScreen?.refresh();let foodEnabled=try store.foodContract==1
         // 取得途中のCycle等が不正なら、画面の前回値をまとめて保持します。
         rows=currentRows;pending=outbox;trainingSnapshot=snapshot;trainingCycles=cycles;trainingWriteEnabled=enabled;foodWriteEnabled=foodEnabled
     }

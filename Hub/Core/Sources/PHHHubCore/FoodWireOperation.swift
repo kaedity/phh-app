@@ -5,7 +5,7 @@ public struct FoodWireOperation: Codable, Equatable, Sendable {
   public let schema_version: Int, environment: String, operation_id: String, entity_id: String,
     expected_revision: Int, action: String, approval_state: String, synthetic: Bool,
     payload: FoodMeal
-  public init(_ operation: FoodPendingOperation, environment: String) throws {
+  public init(_ operation: FoodPendingOperation, environment: String, synthetic: Bool = true) throws {
     try operation.validate()
     guard ["PHH_TEST", "PHH_PRODUCTION"].contains(environment) else {
       throw FoodFailure.invalidValue
@@ -19,14 +19,14 @@ public struct FoodWireOperation: Codable, Equatable, Sendable {
       expected_revision == 0
       ? "confirm_food_meal" : operation.meal.removed ? "remove_food_meal" : "update_food_meal"
     approval_state = "confirmed"
-    synthetic = true
+    self.synthetic = synthetic
     payload = operation.meal
   }
   public func validate() throws {
     try payload.validate()
     try FoodRules.id(operation_id)
     guard schema_version == 1, ["PHH_TEST", "PHH_PRODUCTION"].contains(environment),
-      approval_state == "confirmed", synthetic, entity_id == payload.id, expected_revision >= 0,
+      approval_state == "confirmed", entity_id == payload.id, expected_revision >= 0,
       payload.revision == expected_revision + 1
     else { throw FoodFailure.invalidValue }
     let expected =

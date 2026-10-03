@@ -77,12 +77,16 @@ import UIKit
 
     /// 本番採用済みの契約を再利用。実入力を送信する操作はP4-6の本人判断後に接続します。
     func analyzeFood(jpeg:Data?,note:String,model:String="gpt-5.6-sol") async throws -> FoodDraft {
-        guard !busy, jpeg != nil || !note.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, note.count<=8000, (jpeg?.count ?? 0)<=10_000_000 else {throw FoodFailure.invalidValue}
+        try await analyzeFood(jpegs:jpeg.map{[$0]} ?? [],note:note,model:model)
+    }
+    func analyzeFood(jpegs:[Data],note:String,model:String="gpt-5.6-sol") async throws -> FoodDraft {
+        guard !offline, !busy, !jpegs.isEmpty || !note.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, note.count<=8000 else {throw FoodFailure.invalidValue}
+        let batch=try FoodPhotoBatch(jpegs)
         busy=true;defer{busy=false}
         let token=try await validAccessToken()
         var request=URLRequest(url:ChatGPTPlan.responsesURL);request.httpMethod="POST";request.timeoutInterval=120
         request.setValue("Bearer \(token)",forHTTPHeaderField:"Authorization");request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.setValue("text/event-stream",forHTTPHeaderField:"Accept")
-        request.httpBody=ChatGPTPlan.analysisBody(model:model,jpeg:jpeg,note:note)
+        request.httpBody=ChatGPTPlan.analysisBody(model:model,jpegs:batch.jpegs,note:note)
         let (bytes,response)=try await URLSession.shared.bytes(for:request)
         guard (response as? HTTPURLResponse)?.statusCode==200 else {throw ChatGPTPlan.Failure.denied("解析の接続を確認してください。")}
         var reader=ChatGPTPlan.StreamReader()
@@ -93,7 +97,7 @@ import UIKit
 
     /// P8-3の2枚契約。本人の実入力送信承認まではUIから接続しません。
     func analyzeSharedPlate(before: Data, after: Data?, note: String, model: String = "gpt-5.6-sol") async throws -> SharedPlateEstimate {
-        guard !busy else { throw FoodFailure.pendingEdit }
+        guard !offline, !busy else { throw FoodFailure.pendingEdit }
         let body = try SharedPlateRequest.body(model: model, before: before, after: after, note: note)
         busy = true; defer { busy = false }
         let token = try await validAccessToken()
