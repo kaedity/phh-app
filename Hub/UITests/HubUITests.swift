@@ -635,6 +635,14 @@ import XCTest
         reveal(queued, app: app)
         XCTAssertTrue(queued.label.contains("2,200")); XCTAssertFalse(queued.label.contains("2,400"))
         proof(app, "goal-queued-value-kept-after-discard")
+        reveal(fixed, app: app); fixed.tap()
+        XCTAssertEqual(kcal.value as? String, "2200")
+        XCTAssertFalse(app.buttons["目標を端末へ保存"].isEnabled)
+        proof(app, "goal-reopened-pending-value")
+        tap("goal-editor-back", app: app)
+        tap("未送信の変更を取消", app: app)
+        XCTAssertTrue(app.staticTexts["未送信の変更を取り消しました"].exists)
+        XCTAssertFalse(app.staticTexts["planning-pending-goal-values"].exists)
     }
     func testGoalInvalidInputIsKeptAndExplicitDiscardRestoresCurrentValues() {
         let app = launch(["--p5-preview", "--dark"])
@@ -673,6 +681,64 @@ import XCTest
         reveal(manual, app: app); manual.tap()
         for label in ["カロリー（kcal）", "P（g）", "F（g）", "C（g）"] { XCTAssertTrue(app.staticTexts[label].exists) }
         proof(app, "manual-goal-nutrient-labels")
+    }
+    func testManualGoalPendingReopensLastSavedInputAndCancellationRemovesIt() {
+        let app = launch(["--p5-preview", "--light"])
+        tap("目標と残り", app: app)
+        let manual = app.staticTexts["この日の手動調整"].firstMatch
+        reveal(manual, app: app); manual.tap()
+        let reason = app.textFields["manual-goal-reason"]
+        XCTAssertTrue(reason.waitForExistence(timeout: 3)); reason.tap(); reason.typeText("架空の調整")
+        let kcal = app.textFields["kcal"]
+        kcal.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap(); kcal.typeText("100")
+        tap("入力を終える", app: app)
+        tap("manual-goal-back", app: app); tap("続ける", app: app)
+        XCTAssertEqual(kcal.value as? String, "100"); XCTAssertEqual(reason.value as? String, "架空の調整")
+        tap("manual-goal-save", app: app)
+        XCTAssertEqual(app.buttons["manual-goal-save"].label, "調整を保存しました")
+        reveal(kcal, app: app); kcal.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+        kcal.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "200")
+        tap("入力を終える", app: app)
+        XCTAssertEqual(app.buttons["manual-goal-save"].label, "調整を端末へ保存")
+        XCTAssertFalse(app.buttons["manual-goal-save"].isEnabled)
+        proof(app, "manual-goal-edited-after-save")
+        tap("manual-goal-back", app: app); tap("破棄して戻る", app: app)
+        let waiting = app.staticTexts["planning-pending-manual-values"]
+        reveal(waiting, app: app); XCTAssertTrue(waiting.label.contains("2,100")); XCTAssertTrue(waiting.label.contains("架空の調整"))
+        proof(app, "manual-goal-pending-values")
+        reveal(manual, app: app); manual.tap()
+        XCTAssertEqual(kcal.value as? String, "100"); XCTAssertEqual(reason.value as? String, "架空の調整")
+        XCTAssertFalse(app.buttons["manual-goal-save"].isEnabled)
+        tap("manual-goal-back", app: app)
+        XCTAssertFalse(app.alerts["変更を破棄して戻りますか？"].exists)
+        tap("未送信の変更を取消", app: app)
+        XCTAssertTrue(app.staticTexts["未送信の変更を取り消しました"].exists)
+        XCTAssertFalse(waiting.exists)
+        reveal(manual, app: app); manual.tap()
+        XCTAssertEqual(reason.value as? String, "調整の理由")
+        XCTAssertEqual(kcal.value as? String, "kcal")
+        XCTAssertTrue(app.buttons["manual-goal-save"].isEnabled)
+    }
+    func testManualGoalInvalidDeltaRetainsInputAndDiscardDoesNotSave() {
+        let app = launch(["--p5-preview", "--dark"])
+        tap("目標と残り", app: app)
+        let manual = app.staticTexts["この日の手動調整"].firstMatch
+        reveal(manual, app: app); manual.tap()
+        let reason = app.textFields["manual-goal-reason"]
+        XCTAssertTrue(reason.waitForExistence(timeout: 3)); reason.tap(); reason.typeText("架空の不正調整")
+        let kcal = app.textFields["kcal"]
+        kcal.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap(); kcal.typeText("-2100")
+        tap("入力を終える", app: app); tap("manual-goal-save", app: app)
+        XCTAssertTrue(app.staticTexts["manual-goal-error"].exists)
+        XCTAssertEqual(kcal.value as? String, "-2100")
+        proof(app, "manual-goal-invalid-delta-kept")
+        tap("manual-goal-back", app: app); tap("続ける", app: app)
+        XCTAssertEqual(kcal.value as? String, "-2100")
+        tap("manual-goal-back", app: app); tap("破棄して戻る", app: app)
+        XCTAssertFalse(app.staticTexts["planning-pending-manual-values"].exists)
+        reveal(manual, app: app); manual.tap()
+        XCTAssertEqual(kcal.value as? String, "kcal")
+        XCTAssertEqual(reason.value as? String, "調整の理由")
     }
     func testSupplementInvalidAmountKeepsInputAndDiscardLeavesDayUnchanged() {
         let app = launch(["--p5-preview", "--dark"])

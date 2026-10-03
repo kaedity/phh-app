@@ -50,7 +50,7 @@ import SwiftUI
       try save(.init(goalRule: rule), id: rule.id, revision: old?.revision ?? 0)
     }
   }
-  func manual(date: String, reason: String, delta: GoalDelta) {
+  @discardableResult func manual(date: String, reason: String, delta: GoalDelta) -> Bool {
     perform {
       guard let goal = try goal(date), goal.state != .frozen else { throw GoalFailure.missingBase }
       let rules = records.compactMap { $0.mutation.goalRule }
@@ -88,12 +88,12 @@ import SwiftUI
       try save(.init(day: changed), id: changed.id, revision: day.revision)
     }
   }
-  func cancel(_ id: String) { perform { try PlanningHubStore(hub: hub).cancelUnsent(id) } }
+  func cancel(_ id: String) { perform(successMessage: "未送信の変更を取り消しました") { try PlanningHubStore(hub: hub).cancelUnsent(id) } }
   private func save(_ value: PlanningMutation, id: String, revision: Int) throws {
     try PlanningHubStore(hub: hub).enqueue([HubOperation(planning: value, entityID: id, expectedRevision: revision)])
   }
-  @discardableResult private func perform(_ work: () throws -> Void) -> Bool {
-    do { try work(); try refresh(); message = "端末に保存しました・同期待ち"; onSaved(); return true }
+  @discardableResult private func perform(successMessage: String = "端末に保存しました・同期待ち", _ work: () throws -> Void) -> Bool {
+    do { try work(); try refresh(); message = successMessage; onSaved(); return true }
     catch { message = error.localizedDescription; return false }
   }
 }
@@ -200,13 +200,12 @@ struct GoalRuleEditor: View {
   init(model: PlanningScreenModel, date: String) {
     self.model = model
     let goal = try? model.goal(date)
-    // 編集欄は保存値の精度を保ち、丸めた表示値を再保存しません。
-    func text(_ value: Double?) -> String {
-      value.map { $0.rounded() == $0 ? String(Int($0)) : String($0) } ?? ""
-    }
-    let initial = Draft(from: date, phase: goal?.phase ?? .maintaining,
-      kcal: text(goal?.base.kcal), protein: text(goal?.base.protein),
-      fat: text(goal?.base.fat), carbohydrate: text(goal?.base.carbohydrate))
+    let waiting = model.pending.first { $0.operation.planning?.goalRule?.effectiveFrom == date }?.operation.planning?.goalRule
+    let base = waiting?.base ?? goal?.base
+    // 送信待ちを再表示し、確定済みの目標は差分取得まで保持します。
+    let initial = Draft(from: date, phase: waiting?.phase ?? goal?.phase ?? .maintaining,
+      kcal: planningValueText(base?.kcal), protein: planningValueText(base?.protein),
+      fat: planningValueText(base?.fat), carbohydrate: planningValueText(base?.carbohydrate))
     _date = State(initialValue: FoodDates.date(date)); _phase = State(initialValue: initial.phase)
     _kcal = State(initialValue: initial.kcal); _protein = State(initialValue: initial.protein)
     _fat = State(initialValue: initial.fat); _carbohydrate = State(initialValue: initial.carbohydrate)
@@ -217,7 +216,7 @@ struct GoalRuleEditor: View {
   private var pendingGoal: Pending? { model.pending.first { $0.operation.planning?.goalRule?.effectiveFrom == FoodDates.text(date) } }
   private var pendingMessage: String {
     switch pendingGoal?.state {
-    case .queued: "この開始日の設定は送信待ちです。完了後に再度変更できます。"
+    case .queued: "この開始日の設定は送信待ちです。完了後に再保存できます。"
     case .authentication: "この開始日の設定は再接続待ちです。Googleへ再接続してください。"
     case .invalid, .conflict: "この開始日の設定は要確認です。送信待ちから内容を確認してください。"
     case nil: ""
@@ -260,26 +259,77 @@ struct GoalRuleEditor: View {
 }
 private struct ManualGoalEditor: View {
   let model: PlanningScreenModel, date: String
+  @Environment(\.dismiss) private var dismiss
+  private struct Draft: Equatable {
+    var reason = "", kcal = "", protein = "", fat = "", carbohydrate = ""
+  }
   @State private var reason = ""
   @State private var kcal = ""
   @State private var protein = ""
   @State private var fat = ""
   @State private var carbohydrate = ""
-  @State private var message = ""
+  @State private var error = ""
+  @State private var saved = false
+  @State private var acceptedDraft: Draft
+  @State private var confirmBack = false
+  @FocusState private var focusedField: String?
+  init(model: PlanningScreenModel, date: String) {
+    self.model = model; self.date = date
+    let waiting = model.pending.first { $0.operation.planning?.dailyGoal?.date == date }?.operation.planning?.dailyGoal?.manual.last
+    let initial = waiting.map { Draft(reason: $0.reason, kcal: planningValueText($0.delta.kcal),
+      protein: planningValueText($0.delta.protein), fat: planningValueText($0.delta.fat),
+      carbohydrate: planningValueText($0.delta.carbohydrate)) } ?? Draft()
+    _reason = State(initialValue: initial.reason); _kcal = State(initialValue: initial.kcal)
+    _protein = State(initialValue: initial.protein); _fat = State(initialValue: initial.fat)
+    _carbohydrate = State(initialValue: initial.carbohydrate); _acceptedDraft = State(initialValue: initial)
+  }
+  private var draft: Draft { .init(reason: reason, kcal: kcal, protein: protein, fat: fat, carbohydrate: carbohydrate) }
+  private var hasUnsavedInput: Bool { draft != acceptedDraft }
+  private var pendingAdjustment: Pending? { model.pending.first { $0.operation.planning?.dailyGoal?.date == date } }
+  private var pendingMessage: String {
+    switch pendingAdjustment?.state {
+    case .queued: "この日の調整は送信待ちです。完了後に再保存できます。"
+    case .authentication: "この日の調整は再接続待ちです。Googleへ再接続してください。"
+    case .invalid, .conflict: "この日の調整は要確認です。送信待ちから内容を確認してください。"
+    case nil: ""
+    }
+  }
   var body: some View {
     Form {
-      Text("\(date)だけの手動調整"); TextField("調整の理由", text: $reason)
-      nutrientFields(kcal: $kcal, protein: $protein, fat: $fat, carbohydrate: $carbohydrate)
+      Text("\(mockDay(date))だけの手動調整")
+      TextField("調整の理由", text: $reason).focused($focusedField, equals: "reason")
+        .accessibilityIdentifier("manual-goal-reason")
+      nutrientFields(kcal: $kcal, protein: $protein, fat: $fat, carbohydrate: $carbohydrate, focus: $focusedField).motionFieldError(error)
       Text("増減値を入力してください。空欄は調整なしです。").font(.caption)
-      Button("調整を端末へ保存") {
+      Button {
         do {
-          model.manual(date: date, reason: reason, delta: try .init(kcal: planningNumber(kcal) ?? 0,
+          saved = model.manual(date: date, reason: reason, delta: try .init(kcal: planningNumber(kcal) ?? 0,
             protein: planningNumber(protein) ?? 0, fat: planningNumber(fat) ?? 0, carbohydrate: planningNumber(carbohydrate) ?? 0))
-          message = model.message
-        } catch { message = error.localizedDescription }
-      }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: .systemBackground))
-      if !message.isEmpty { Text(message) }
-    }.navigationTitle("手動調整")
+          error = saved ? "" : model.message
+          if saved { acceptedDraft = draft; focusedField = nil; Haptics.emit(.success) }
+        } catch { self.error = error.localizedDescription }
+      } label: { MotionSaveLabel(title: "調整を端末へ保存", saved: saved) }
+      .buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: pendingAdjustment == nil ? .systemBackground : .label))
+      .disabled(pendingAdjustment != nil).accessibilityIdentifier("manual-goal-save")
+      .accessibilityLabel(saved ? "調整を保存しました" : "調整を端末へ保存")
+      if !pendingMessage.isEmpty { Text(pendingMessage).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("manual-goal-pending") }
+      if !error.isEmpty { Text(error).foregroundStyle(.red).accessibilityIdentifier("manual-goal-error") }
+    }.navigationTitle("手動調整").navigationBarBackButtonHidden(true)
+    .scrollDismissesKeyboard(.interactively)
+    .toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("戻る") { if hasUnsavedInput { confirmBack = true } else { dismiss() } }
+          .accessibilityIdentifier("manual-goal-back")
+      }
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer(); Button("入力を終える") { focusedField = nil }
+      }
+    }
+    .alert("変更を破棄して戻りますか？", isPresented: $confirmBack) {
+      Button("破棄して戻る", role: .destructive) { dismiss() }
+      Button("続ける", role: .cancel) {}
+    } message: { Text(pendingAdjustment == nil ? "まだ保存していない調整の入力が消えます。" : "最後に保存した後の入力が消えます。送信待ちの調整は残ります。") }
+    .onChange(of: draft) { _, _ in saved = false; error = "" }
   }
 }
 struct SupplementPage: View {
@@ -382,6 +432,10 @@ struct PlanningQueueCard: View {
             Text("\(mockDay(rule.effectiveFrom))から · \(foodNumber(rule.base.kcal)) kcal")
               .font(.caption).accessibilityIdentifier("planning-pending-goal-values")
           }
+          if let goal = p.operation.planning?.dailyGoal, let adjustment = goal.manual.last {
+            Text("\(mockDay(goal.date)) · 調整後 \(foodNumber(goal.total.kcal)) kcal · \(adjustment.reason)")
+              .font(.caption).accessibilityIdentifier("planning-pending-manual-values")
+          }
           Text(p.message).font(.caption).foregroundStyle(.secondary)
           if p.state == .queued && p.attempts == 0 { Button("未送信の変更を取消") { model.cancel(p.id) }.buttonStyle(.bordered) }
         }
@@ -389,6 +443,9 @@ struct PlanningQueueCard: View {
     }
     if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.secondary) }
   }
+}
+private func planningValueText(_ value: Double?) -> String {
+  value.map { $0.rounded() == $0 ? String(Int($0)) : String($0) } ?? ""
 }
 private func planningNumber(_ text: String) throws -> Double? {
   let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
