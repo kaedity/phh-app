@@ -1,0 +1,1146 @@
+{
+  "schema_version": 1,
+  "environments": [
+    "PHH_TEST",
+    "PHH_PRODUCTION"
+  ],
+  "real_data_enabled_default": false,
+  "tables": {
+    "Settings": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "value_type",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "string_value",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "number_value",
+          "type": "number",
+          "nullable": true
+        },
+        {
+          "name": "bool_value",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "Operations": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "content_hash",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "actor",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "action",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "error_code",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "committed_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "change_number",
+          "type": "integer",
+          "nullable": false
+        }
+      ]
+    },
+    "OperationEntities": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "operation_id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "table_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "entity_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        }
+      ]
+    },
+    "IntakeLedger": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "intake_id"
+        ],
+        [
+          "sheet_row"
+        ],
+        [
+          "status"
+        ],
+        [
+          "operation_id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "intake_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "sheet_row",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "content_hash",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "first_seen",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "record_id",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "operation_id",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "undone",
+          "type": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "flagged_hashes",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_0",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_1",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_2",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_3",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_4",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_5",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_6",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_7",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "original_8",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "IntakeScans": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "sheet_row"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "sheet_row",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "intake_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "content_hash",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "first_seen",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "checked_at",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "record_id",
+          "type": "string",
+          "nullable": true
+        }
+      ]
+    },
+    "RecordIndex": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "lookup_key"
+        ],
+        [
+          "local_date"
+        ],
+        [
+          "parent_id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "table_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "sheet_row",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "local_date",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "lookup_key",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "parent_id",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "SyncChanges": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "change_number"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "change_number",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "table_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "entity_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "removed",
+          "type": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "local_date",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "changed_at",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "Meals": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "local_date"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "local_date",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "time_zone",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "slot",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "number",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "confirmed_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_app_edit_at",
+          "type": "number",
+          "nullable": true
+        }
+      ]
+    },
+    "MealItems": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "meal_id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "meal_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "quantity",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "unit",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "reference_version",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "source_note",
+          "type": "string",
+          "nullable": true
+        }
+      ]
+    },
+    "IntakeNutrients": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "item_id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "item_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "nutrient_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "unit",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "nullable": true
+        },
+        {
+          "name": "value_status",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "TrainingSessions": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "local_date",
+          "session"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "local_date",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "time_zone",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "session",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "cycle_id",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "started_at",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "ended_at",
+          "type": "string",
+          "nullable": true
+        }
+      ]
+    },
+    "TrainingSets": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "session_id",
+          "exercise",
+          "set_no"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "session_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "exercise",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "set_no",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "weight_kg",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "reps",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "rpe",
+          "type": "number",
+          "nullable": true
+        },
+        {
+          "name": "rir",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "weight_basis",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "occurred_at",
+          "type": "string",
+          "nullable": true
+        }
+      ]
+    },
+    "TrainingNotes": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "session_id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "last_operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "session_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "exercise",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "set_no",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "speaker",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "DailySummary": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "local_date",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "meal_count",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "training_set_count",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "kcal",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "protein_g",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "fat_g",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "carbohydrate_g",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "kcal_unknown",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "protein_unknown",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "fat_unknown",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "carbohydrate_unknown",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "Reviews": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "id"
+        ],
+        [
+          "status"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "intake_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "sheet_row",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "number",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "resolution",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "notified_at",
+          "type": "number",
+          "nullable": true
+        },
+        {
+          "name": "renotified_date",
+          "type": "string",
+          "nullable": true
+        }
+      ]
+    },
+    "UndoValues": {
+      "primary_key": [
+        "id"
+      ],
+      "indexes": [
+        [
+          "operation_id",
+          "record_id"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "operation_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "field_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "value_type",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "string_value",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "number_value",
+          "type": "number",
+          "nullable": true
+        },
+        {
+          "name": "bool_value",
+          "type": "boolean",
+          "nullable": true
+        }
+      ]
+    }
+  }
+}

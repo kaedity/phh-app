@@ -1,0 +1,458 @@
+{
+  "GoalRules": {
+    "key": "goalRule",
+    "model_id": true,
+    "fields": [
+      {
+        "column": "model_revision",
+        "path": "revision",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "column": "effective_from",
+        "path": "effectiveFrom",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "effective_through",
+        "path": "effectiveThrough",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "column": "phase",
+        "path": "phase",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "base_kcal",
+        "path": "base.kcal",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "base_protein_g",
+        "path": "base.protein",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "base_fat_g",
+        "path": "base.fat",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "base_carbohydrate_g",
+        "path": "base.carbohydrate",
+        "type": "number",
+        "nullable": true
+      }
+    ],
+    "children": []
+  },
+  "DailyGoals": {
+    "key": "dailyGoal",
+    "model_id": false,
+    "fields": [
+      {
+        "column": "local_date",
+        "path": "date",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "rule_id",
+        "path": "ruleID",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "rule_revision",
+        "path": "ruleRevision",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "column": "calculation_version",
+        "path": "calculationVersion",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "phase",
+        "path": "phase",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "goal_state",
+        "path": "state",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "base_kcal",
+        "path": "base.kcal",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "base_protein_g",
+        "path": "base.protein",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "base_fat_g",
+        "path": "base.fat",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "base_carbohydrate_g",
+        "path": "base.carbohydrate",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "total_kcal",
+        "path": "total.kcal",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "total_protein_g",
+        "path": "total.protein",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "total_fat_g",
+        "path": "total.fat",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "total_carbohydrate_g",
+        "path": "total.carbohydrate",
+        "type": "number",
+        "nullable": true
+      }
+    ],
+    "children": [
+      {
+        "table": "DailyGoalAdjustments",
+        "path": "manual",
+        "model_id": true,
+        "fields": [
+          {
+            "column": "local_date",
+            "path": "date",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "column": "reason",
+            "path": "reason",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "column": "delta_kcal",
+            "path": "delta.kcal",
+            "type": "number",
+            "nullable": false
+          },
+          {
+            "column": "delta_protein_g",
+            "path": "delta.protein",
+            "type": "number",
+            "nullable": false
+          },
+          {
+            "column": "delta_fat_g",
+            "path": "delta.fat",
+            "type": "number",
+            "nullable": false
+          },
+          {
+            "column": "delta_carbohydrate_g",
+            "path": "delta.carbohydrate",
+            "type": "number",
+            "nullable": false
+          }
+        ]
+      }
+    ]
+  },
+  "FoodDays": {
+    "key": "foodDay",
+    "model_id": false,
+    "fields": [
+      {
+        "column": "local_date",
+        "path": "date",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "model_revision",
+        "path": "revision",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "column": "food_revision",
+        "path": "foodRevision",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "column": "day_state",
+        "path": "status",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "completed_food_revision",
+        "path": "completedFoodRevision",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "column": "completed_at",
+        "path": "completedAt",
+        "type": "number",
+        "nullable": true
+      },
+      {
+        "column": "completion_operation_id",
+        "path": "completionOperationID",
+        "type": "string",
+        "nullable": true
+      }
+    ],
+    "children": []
+  },
+  "SupplementProducts": {
+    "key": "product",
+    "model_id": true,
+    "fields": [
+      {
+        "column": "product_id",
+        "path": "productID",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "model_revision",
+        "path": "revision",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "column": "name",
+        "path": "name",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "reference_amount",
+        "path": "referenceAmount",
+        "type": "number",
+        "nullable": false
+      },
+      {
+        "column": "unit",
+        "path": "unit",
+        "type": "string",
+        "nullable": false
+      }
+    ],
+    "children": [
+      {
+        "table": "SupplementProductNutrients",
+        "path": "nutrients",
+        "model_id": false,
+        "fields": [
+          {
+            "column": "nutrient_id",
+            "path": "nutrientID",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "column": "value",
+            "path": "value",
+            "type": "number",
+            "nullable": true
+          },
+          {
+            "column": "unit",
+            "path": "unit",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "column": "source",
+            "path": "source",
+            "type": "string",
+            "nullable": false
+          }
+        ]
+      }
+    ]
+  },
+  "SupplementPlans": {
+    "key": "plan",
+    "model_id": true,
+    "fields": [
+      {
+        "column": "plan_id",
+        "path": "planID",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "model_revision",
+        "path": "revision",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "column": "product_version_id",
+        "path": "productVersionID",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "daily_amount",
+        "path": "dailyAmount",
+        "type": "number",
+        "nullable": false
+      },
+      {
+        "column": "effective_from",
+        "path": "effectiveFrom",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "effective_through",
+        "path": "effectiveThrough",
+        "type": "string",
+        "nullable": true
+      },
+      {
+        "column": "auto_count",
+        "path": "autoCount",
+        "type": "boolean",
+        "nullable": false
+      }
+    ],
+    "children": []
+  },
+  "SupplementDays": {
+    "key": "day",
+    "model_id": true,
+    "fields": [
+      {
+        "column": "plan_id",
+        "path": "planID",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "local_date",
+        "path": "date",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "plan_version_id",
+        "path": "planVersionID",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "product_version_id",
+        "path": "productVersionID",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "product_name",
+        "path": "productName",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "amount",
+        "path": "amount",
+        "type": "number",
+        "nullable": false
+      },
+      {
+        "column": "unit",
+        "path": "unit",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "model_revision",
+        "path": "revision",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "column": "day_state",
+        "path": "state",
+        "type": "string",
+        "nullable": false
+      },
+      {
+        "column": "daily_override",
+        "path": "dailyOverride",
+        "type": "boolean",
+        "nullable": false
+      }
+    ],
+    "children": [
+      {
+        "table": "SupplementDayNutrients",
+        "path": "nutrients",
+        "model_id": false,
+        "fields": [
+          {
+            "column": "nutrient_id",
+            "path": "nutrientID",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "column": "value",
+            "path": "value",
+            "type": "number",
+            "nullable": true
+          },
+          {
+            "column": "unit",
+            "path": "unit",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "column": "source",
+            "path": "source",
+            "type": "string",
+            "nullable": false
+          }
+        ]
+      }
+    ]
+  }
+}

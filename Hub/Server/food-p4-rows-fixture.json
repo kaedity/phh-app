@@ -1,0 +1,205 @@
+[
+  {
+    "table": "Meals",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "00000000-0000-4000-a000-000000000001",
+      "local_date": "2026-10-02",
+      "time_zone": "Asia/Tokyo",
+      "slot": "朝食",
+      "number": 1,
+      "confirmed_at": "2026-10-02T00:00:00.000Z",
+      "last_app_edit_at": 1790899200000,
+      "food_name": "架空のパン ほか1品",
+      "food_quantity": 1,
+      "food_unit": "食",
+      "preset_id": "00000000-0000-4000-a000-000000000050",
+      "preset_revision": 1
+    }
+  },
+  {
+    "table": "MealItems",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "00000000-0000-4000-a000-000000000010",
+      "meal_id": "00000000-0000-4000-a000-000000000001",
+      "name": "架空のパン",
+      "quantity": 1,
+      "unit": "個",
+      "source": "商品表示",
+      "reference_version": "00000000-0000-4000-a000-000000000060",
+      "source_note": null,
+      "preparation": "未指定",
+      "confidence": "高",
+      "number": 1
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "94b76d93-c6da-5e9c-a37e-857926cfc441",
+      "item_id": "00000000-0000-4000-a000-000000000010",
+      "nutrient_id": "kcal",
+      "unit": "kcal",
+      "value": 100,
+      "value_status": "label"
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "a52e4566-de8b-5e72-ae32-7e0dc9d556f5",
+      "item_id": "00000000-0000-4000-a000-000000000010",
+      "nutrient_id": "protein_g",
+      "unit": "g",
+      "value": 10,
+      "value_status": "label"
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "b8fca313-f5c4-52b6-a10c-94fbf0a16d79",
+      "item_id": "00000000-0000-4000-a000-000000000010",
+      "nutrient_id": "fat_g",
+      "unit": "g",
+      "value": 0,
+      "value_status": "label"
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "d5f64dc5-84e1-5669-acaa-3afa383fdc0f",
+      "item_id": "00000000-0000-4000-a000-000000000010",
+      "nutrient_id": "carbohydrate_g",
+      "unit": "g",
+      "value": 15,
+      "value_status": "label"
+    }
+  },
+  {
+    "table": "MealItems",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "00000000-0000-4000-a000-000000000011",
+      "meal_id": "00000000-0000-4000-a000-000000000001",
+      "name": "架空のスープ",
+      "quantity": 1,
+      "unit": "杯",
+      "source": "推定",
+      "reference_version": null,
+      "source_note": null,
+      "preparation": "加熱済み",
+      "confidence": "低",
+      "number": 2
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "e5f0f882-574f-534a-aff6-649404717d58",
+      "item_id": "00000000-0000-4000-a000-000000000011",
+      "nutrient_id": "kcal",
+      "unit": "kcal",
+      "value": null,
+      "value_status": "unknown"
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "7871b308-f4b6-580f-a908-7e2e55f33199",
+      "item_id": "00000000-0000-4000-a000-000000000011",
+      "nutrient_id": "protein_g",
+      "unit": "g",
+      "value": null,
+      "value_status": "unknown"
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "e46bc13a-5013-53c4-a657-daad07d8404b",
+      "item_id": "00000000-0000-4000-a000-000000000011",
+      "nutrient_id": "fat_g",
+      "unit": "g",
+      "value": null,
+      "value_status": "unknown"
+    }
+  },
+  {
+    "table": "IntakeNutrients",
+    "record": {
+      "revision": 1,
+      "status": "active",
+      "created_at": "2026-10-02T00:00:00.000Z",
+      "updated_at": "2026-10-02T00:00:00.000Z",
+      "source_kind": "app",
+      "last_operation_id": "00000000-0000-4000-a000-000000000100",
+      "id": "c665ed8b-fa0c-5ca4-a50a-7926b06fd1cc",
+      "item_id": "00000000-0000-4000-a000-000000000011",
+      "nutrient_id": "carbohydrate_g",
+      "unit": "g",
+      "value": null,
+      "value_status": "unknown"
+    }
+  }
+]

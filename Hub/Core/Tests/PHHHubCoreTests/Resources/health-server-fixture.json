@@ -1,0 +1,330 @@
+{
+  "operations": [
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "operation_id": "00000000-0000-4000-a000-000000001000",
+      "entity_id": "00000000-0000-4000-a000-000000001000",
+      "expected_revision": 0,
+      "action": "save_health_delta",
+      "payload": {
+        "id": "00000000-0000-4000-a000-000000001000",
+        "metric": "bodyMass",
+        "added": [
+          {
+            "id": "00000000-0000-4000-a000-000000000001",
+            "metric": "bodyMass",
+            "source": {
+              "id": "synthetic.example.device",
+              "name": "架空の情報源",
+              "device": null
+            },
+            "start_utc": 1790956800,
+            "end_utc": 1790956800,
+            "value": 65,
+            "unit": "kg",
+            "sleepStage": null
+          }
+        ],
+        "deletedIDs": [],
+        "affectedDates": [
+          "2026-10-03"
+        ],
+        "statistics": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "operation_id": "00000000-0000-4000-a000-000000001001",
+      "entity_id": "00000000-0000-4000-a000-000000001001",
+      "expected_revision": 0,
+      "action": "save_health_delta",
+      "payload": {
+        "id": "00000000-0000-4000-a000-000000001001",
+        "metric": "stepCount",
+        "added": [],
+        "deletedIDs": [],
+        "affectedDates": [
+          "2026-10-03"
+        ],
+        "statistics": [
+          {
+            "metric": "stepCount",
+            "date": "2026-10-03",
+            "value": 0,
+            "unit": "count",
+            "method": "healthkit-statistics-v1",
+            "measured_at_utc": 1790989200
+          }
+        ]
+      }
+    }
+  ],
+  "receipts": [
+    {
+      "environment": "PHH_PRODUCTION",
+      "operation_id": "00000000-0000-4000-a000-000000001000",
+      "status": "committed",
+      "error_code": null,
+      "entity_ids": [
+        "00000000-0000-4000-a000-000000001000"
+      ],
+      "revisions": [
+        1
+      ],
+      "committed_at": "2026-10-03T01:00:00.000Z",
+      "change_number": 4,
+      "retryable": false
+    },
+    {
+      "environment": "PHH_PRODUCTION",
+      "operation_id": "00000000-0000-4000-a000-000000001001",
+      "status": "committed",
+      "error_code": null,
+      "entity_ids": [
+        "00000000-0000-4000-a000-000000001001"
+      ],
+      "revisions": [
+        1
+      ],
+      "committed_at": "2026-10-03T01:00:00.000Z",
+      "change_number": 6,
+      "retryable": false
+    }
+  ],
+  "delta": {
+    "environment": "PHH_PRODUCTION",
+    "schema_version": 1,
+    "generation": 1,
+    "snapshot_revision": 6,
+    "changes": [
+      {
+        "change": {
+          "id": "1",
+          "change_number": 1,
+          "operation_id": "00000000-0000-4000-a000-000000001000",
+          "table_name": "HealthArchives",
+          "entity_id": "4d72adc8-493d-53e8-ae8e-697053baa031",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-03",
+          "changed_at": "2026-10-03T01:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "4d72adc8-493d-53e8-ae8e-697053baa031",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-03T01:00:00.000Z",
+          "updated_at": "2026-10-03T01:00:00.000Z",
+          "source_kind": "health",
+          "last_operation_id": "00000000-0000-4000-a000-000000001000",
+          "kind": "samples",
+          "metric": "bodyMass",
+          "partition_key": "sample|bodyMass|2026-10-03|8ba607896e93db983dcf3b9ff8dee84051d5073ca9b6c5e48e182c48ba43b80e",
+          "source_id": "synthetic.example.device",
+          "local_date": "2026-10-03",
+          "part_number": 1,
+          "raw_sha256": "0c35a9d57a9a881fa2207aa31c1ffbf6cbc6f17926d8686f941325d3745b0c5d",
+          "raw_bytes": 327,
+          "record_count": 1,
+          "gzip_sha256": "88d7457b18565bfa0381b63647daf4871a65f8d72d72f4ba920ca02c9fdd93e0",
+          "gzip_bytes": 213,
+          "format_version": 1,
+          "file_id": "file-0",
+          "active_count": 1
+        }
+      },
+      {
+        "change": {
+          "id": "2",
+          "change_number": 2,
+          "operation_id": "00000000-0000-4000-a000-000000001000",
+          "table_name": "HealthArchives",
+          "entity_id": "73f96ab3-3ff4-567d-a97c-76b56537e0fc",
+          "revision": 1,
+          "removed": false,
+          "local_date": null,
+          "changed_at": "2026-10-03T01:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "73f96ab3-3ff4-567d-a97c-76b56537e0fc",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-03T01:00:00.000Z",
+          "updated_at": "2026-10-03T01:00:00.000Z",
+          "source_kind": "health",
+          "last_operation_id": "00000000-0000-4000-a000-000000001000",
+          "kind": "uuid_index",
+          "metric": "bodyMass",
+          "partition_key": "uuid|bodyMass|31",
+          "source_id": null,
+          "local_date": null,
+          "part_number": 1,
+          "raw_sha256": "b47d27a1b0d6e938a901b14e8171845c81c99fb7dc77a5dacf6a2717a29b887d",
+          "raw_bytes": 134,
+          "record_count": 1,
+          "gzip_sha256": "0f2b3b55428dfb05dfe6c44a7d10b66de1a340e854ef14493a421bbac59fb9eb",
+          "gzip_bytes": 123,
+          "format_version": 1,
+          "file_id": "file-1",
+          "active_count": 1
+        }
+      },
+      {
+        "change": {
+          "id": "3",
+          "change_number": 3,
+          "operation_id": "00000000-0000-4000-a000-000000001000",
+          "table_name": "HealthDaily",
+          "entity_id": "fa901755-bdc6-50da-a5ed-6901e00dce3e",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-03",
+          "changed_at": "2026-10-03T01:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "fa901755-bdc6-50da-a5ed-6901e00dce3e",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-03T01:00:00.000Z",
+          "updated_at": "2026-10-03T01:00:00.000Z",
+          "source_kind": "health",
+          "last_operation_id": "00000000-0000-4000-a000-000000001000",
+          "metric": "bodyMass",
+          "local_date": "2026-10-03",
+          "source_id": "synthetic.example.device",
+          "value": 65,
+          "unit": "kg",
+          "method": "source-latest-v1",
+          "measured_at_utc": null,
+          "known_count": 1,
+          "unknown_count": 0,
+          "minimum": 65,
+          "maximum": 65,
+          "representative_id": "00000000-0000-4000-a000-000000000001",
+          "sample_revision": 1
+        }
+      },
+      {
+        "change": {
+          "id": "4",
+          "change_number": 4,
+          "operation_id": "00000000-0000-4000-a000-000000001000",
+          "table_name": "HealthBatches",
+          "entity_id": "00000000-0000-4000-a000-000000001000",
+          "revision": 1,
+          "removed": false,
+          "local_date": null,
+          "changed_at": "2026-10-03T01:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "00000000-0000-4000-a000-000000001000",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-03T01:00:00.000Z",
+          "updated_at": "2026-10-03T01:00:00.000Z",
+          "source_kind": "health",
+          "last_operation_id": "00000000-0000-4000-a000-000000001000",
+          "metric": "bodyMass",
+          "request_hash": "5995b6d8cb8f74993d970ea0eab1e9d1c236bd8ccc86c2fd586e09494d3a7239",
+          "added_count": 1,
+          "deleted_count": 0,
+          "statistics_count": 0,
+          "raw_sha256": "a02dc1f483b429c14d91e18bd90b12f030d465d11d1c4c8610d9c0751a178184",
+          "raw_bytes": 375,
+          "record_count": 1,
+          "gzip_sha256": "ebf4011dbabe6146a6a9493745a61c638cc8c1f382502229c3063869170b2cfb",
+          "gzip_bytes": 258,
+          "format_version": 1,
+          "file_id": "file-2"
+        }
+      },
+      {
+        "change": {
+          "id": "5",
+          "change_number": 5,
+          "operation_id": "00000000-0000-4000-a000-000000001001",
+          "table_name": "HealthDaily",
+          "entity_id": "e3fd3f3b-95fc-52c5-acd8-4daef14586a2",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-03",
+          "changed_at": "2026-10-03T01:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "e3fd3f3b-95fc-52c5-acd8-4daef14586a2",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-03T01:00:00.000Z",
+          "updated_at": "2026-10-03T01:00:00.000Z",
+          "source_kind": "health",
+          "last_operation_id": "00000000-0000-4000-a000-000000001001",
+          "metric": "stepCount",
+          "local_date": "2026-10-03",
+          "source_id": null,
+          "value": 0,
+          "unit": "count",
+          "method": "healthkit-statistics-v1",
+          "measured_at_utc": 1790989200,
+          "known_count": 1,
+          "unknown_count": 0,
+          "minimum": null,
+          "maximum": null,
+          "representative_id": null,
+          "sample_revision": 1
+        }
+      },
+      {
+        "change": {
+          "id": "6",
+          "change_number": 6,
+          "operation_id": "00000000-0000-4000-a000-000000001001",
+          "table_name": "HealthBatches",
+          "entity_id": "00000000-0000-4000-a000-000000001001",
+          "revision": 1,
+          "removed": false,
+          "local_date": null,
+          "changed_at": "2026-10-03T01:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "00000000-0000-4000-a000-000000001001",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-03T01:00:00.000Z",
+          "updated_at": "2026-10-03T01:00:00.000Z",
+          "source_kind": "health",
+          "last_operation_id": "00000000-0000-4000-a000-000000001001",
+          "metric": "stepCount",
+          "request_hash": "d31928eda3b0adb85fd21844801518429c90ffbd325c1904b94a9bfc44b6fe8d",
+          "added_count": 0,
+          "deleted_count": 0,
+          "statistics_count": 1,
+          "raw_sha256": "791643c5a3022674c1501bf8293f1b67b9f45ba74bd9459ab5fe0eb9f247dc3a",
+          "raw_bytes": 272,
+          "record_count": 1,
+          "gzip_sha256": "6a0b4e1523455fb33e872eebf8ab33de094911c065584dd79e133b03a9e25911",
+          "gzip_bytes": 185,
+          "format_version": 1,
+          "file_id": "file-3"
+        }
+      }
+    ],
+    "next_cursor": 6,
+    "has_more": false,
+    "training_contract": 1,
+    "food_contract": 1,
+    "planning_contract": 1,
+    "health_contract": 1
+  }
+}

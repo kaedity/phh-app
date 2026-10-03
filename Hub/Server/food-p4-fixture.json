@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "environment": "PHH_PRODUCTION",
+  "operation_id": "00000000-0000-4000-a000-000000000100",
+  "entity_id": "00000000-0000-4000-a000-000000000001",
+  "expected_revision": 0,
+  "action": "confirm_food_meal",
+  "approval_state": "confirmed",
+  "synthetic": true,
+  "payload": {
+    "id": "00000000-0000-4000-a000-000000000001",
+    "revision": 1,
+    "date": "2026-10-02",
+    "slot": "朝食",
+    "removed": false,
+    "presetID": "00000000-0000-4000-a000-000000000050",
+    "presetRevision": 1,
+    "items": [
+      {
+        "id": "00000000-0000-4000-a000-000000000010",
+        "name": "架空のパン",
+        "quantity": 1,
+        "unit": "個",
+        "preparation": "未指定",
+        "source": "商品表示",
+        "versionID": "00000000-0000-4000-a000-000000000060",
+        "confidence": "高",
+        "nutrients": {
+          "kcal": 100,
+          "protein": 10,
+          "fat": 0,
+          "carbohydrate": 15
+        }
+      },
+      {
+        "id": "00000000-0000-4000-a000-000000000011",
+        "name": "架空のスープ",
+        "quantity": 1,
+        "unit": "杯",
+        "preparation": "加熱済み",
+        "source": "推定",
+        "confidence": "低",
+        "nutrients": {
+          "kcal": null,
+          "protein": null,
+          "fat": null,
+          "carbohydrate": null
+        }
+      }
+    ]
+  }
+}

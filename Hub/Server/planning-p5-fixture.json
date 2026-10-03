@@ -1,0 +1,696 @@
+{
+  "page": {
+    "schema_version": 1,
+    "environment": "PHH_PRODUCTION",
+    "generation": 1,
+    "planning_contract": 1,
+    "food_contract": 1,
+    "training_contract": 1,
+    "snapshot_revision": 17,
+    "next_cursor": 17,
+    "has_more": false,
+    "changes": [
+      {
+        "change": {
+          "change_number": 1,
+          "table_name": "GoalRules",
+          "entity_id": "00000000-0000-4000-a000-000000000200",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000300",
+          "id": "00000000-0000-4000-a000-000000000200",
+          "model_revision": 1,
+          "effective_from": "2026-10-01",
+          "effective_through": null,
+          "phase": "maintaining",
+          "base_kcal": 2000,
+          "base_protein_g": 100,
+          "base_fat_g": 50,
+          "base_carbohydrate_g": 250
+        }
+      },
+      {
+        "change": {
+          "change_number": 2,
+          "table_name": "DailyGoals",
+          "entity_id": "00000000-0000-4000-a000-000000000201",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": "2026-10-03"
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000301",
+          "id": "00000000-0000-4000-a000-000000000201",
+          "local_date": "2026-10-03",
+          "rule_id": "00000000-0000-4000-a000-000000000200",
+          "rule_revision": 1,
+          "calculation_version": "fixed-manual-v1",
+          "phase": "maintaining",
+          "goal_state": "frozen",
+          "base_kcal": 2000,
+          "base_protein_g": 100,
+          "base_fat_g": 50,
+          "base_carbohydrate_g": 250,
+          "total_kcal": 2100,
+          "total_protein_g": 100,
+          "total_fat_g": 50,
+          "total_carbohydrate_g": 250
+        }
+      },
+      {
+        "change": {
+          "change_number": 3,
+          "table_name": "DailyGoalAdjustments",
+          "entity_id": "00000000-0000-4000-a000-000000000210",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": "2026-10-03"
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000301",
+          "id": "00000000-0000-4000-a000-000000000210",
+          "parent_id": "00000000-0000-4000-a000-000000000201",
+          "number": 1,
+          "local_date": "2026-10-03",
+          "reason": "架空手動",
+          "delta_kcal": 100,
+          "delta_protein_g": 0,
+          "delta_fat_g": 0,
+          "delta_carbohydrate_g": 0
+        }
+      },
+      {
+        "change": {
+          "change_number": 4,
+          "table_name": "FoodDays",
+          "entity_id": "00000000-0000-4000-a000-000000000202",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": "2026-10-03"
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000302",
+          "id": "00000000-0000-4000-a000-000000000202",
+          "local_date": "2026-10-03",
+          "model_revision": 1,
+          "food_revision": 0,
+          "day_state": "completed",
+          "completed_food_revision": 0,
+          "completed_at": 1,
+          "completion_operation_id": "00000000-0000-4000-a000-000000000302"
+        }
+      },
+      {
+        "change": {
+          "change_number": 5,
+          "table_name": "SupplementProducts",
+          "entity_id": "00000000-0000-4000-a000-000000000203",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000303",
+          "id": "00000000-0000-4000-a000-000000000203",
+          "product_id": "00000000-0000-4000-a000-000000000220",
+          "model_revision": 1,
+          "name": "架空サプリ",
+          "reference_amount": 1,
+          "unit": "粒"
+        }
+      },
+      {
+        "change": {
+          "change_number": 6,
+          "table_name": "SupplementProductNutrients",
+          "entity_id": "e18b9cad-eb6f-5bb0-a38d-81c4e210c11f",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000303",
+          "id": "e18b9cad-eb6f-5bb0-a38d-81c4e210c11f",
+          "parent_id": "00000000-0000-4000-a000-000000000203",
+          "number": 1,
+          "nutrient_id": "kcal",
+          "value": 10,
+          "unit": "kcal",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 7,
+          "table_name": "SupplementProductNutrients",
+          "entity_id": "6bc9a025-3333-59a4-a34c-edfd06ae9332",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000303",
+          "id": "6bc9a025-3333-59a4-a34c-edfd06ae9332",
+          "parent_id": "00000000-0000-4000-a000-000000000203",
+          "number": 2,
+          "nutrient_id": "protein",
+          "value": null,
+          "unit": "g",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 8,
+          "table_name": "SupplementProductNutrients",
+          "entity_id": "c15abcf2-6a0d-56b1-a50d-81c6e500fa46",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000303",
+          "id": "c15abcf2-6a0d-56b1-a50d-81c6e500fa46",
+          "parent_id": "00000000-0000-4000-a000-000000000203",
+          "number": 3,
+          "nutrient_id": "fat",
+          "value": 0,
+          "unit": "g",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 9,
+          "table_name": "SupplementProductNutrients",
+          "entity_id": "844d659d-c098-5307-a17f-b3fb55cf8aee",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000303",
+          "id": "844d659d-c098-5307-a17f-b3fb55cf8aee",
+          "parent_id": "00000000-0000-4000-a000-000000000203",
+          "number": 4,
+          "nutrient_id": "carbohydrate",
+          "value": 2,
+          "unit": "g",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 10,
+          "table_name": "SupplementProductNutrients",
+          "entity_id": "e2d4b369-fd66-523a-a60b-b11a8203dcd8",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000303",
+          "id": "e2d4b369-fd66-523a-a60b-b11a8203dcd8",
+          "parent_id": "00000000-0000-4000-a000-000000000203",
+          "number": 5,
+          "nutrient_id": "vitamin_b12",
+          "value": 3,
+          "unit": "µg",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 11,
+          "table_name": "SupplementPlans",
+          "entity_id": "00000000-0000-4000-a000-000000000204",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000304",
+          "id": "00000000-0000-4000-a000-000000000204",
+          "plan_id": "00000000-0000-4000-a000-000000000221",
+          "model_revision": 1,
+          "product_version_id": "00000000-0000-4000-a000-000000000203",
+          "daily_amount": 2,
+          "effective_from": "2026-10-01",
+          "effective_through": null,
+          "auto_count": true
+        }
+      },
+      {
+        "change": {
+          "change_number": 12,
+          "table_name": "SupplementDays",
+          "entity_id": "00000000-0000-4000-a000-000000000205",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": "2026-10-03"
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000305",
+          "id": "00000000-0000-4000-a000-000000000205",
+          "plan_id": "00000000-0000-4000-a000-000000000221",
+          "local_date": "2026-10-03",
+          "plan_version_id": "00000000-0000-4000-a000-000000000204",
+          "product_version_id": "00000000-0000-4000-a000-000000000203",
+          "product_name": "架空サプリ",
+          "amount": 2,
+          "unit": "粒",
+          "model_revision": 1,
+          "day_state": "planned",
+          "daily_override": false
+        }
+      },
+      {
+        "change": {
+          "change_number": 13,
+          "table_name": "SupplementDayNutrients",
+          "entity_id": "92ddfc15-ef20-5f5e-aab9-e39b593abbc8",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000305",
+          "id": "92ddfc15-ef20-5f5e-aab9-e39b593abbc8",
+          "parent_id": "00000000-0000-4000-a000-000000000205",
+          "number": 1,
+          "nutrient_id": "kcal",
+          "value": 20,
+          "unit": "kcal",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 14,
+          "table_name": "SupplementDayNutrients",
+          "entity_id": "64b808e3-3d0e-5aa1-aa36-783f1bd0b900",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000305",
+          "id": "64b808e3-3d0e-5aa1-aa36-783f1bd0b900",
+          "parent_id": "00000000-0000-4000-a000-000000000205",
+          "number": 2,
+          "nutrient_id": "protein",
+          "value": null,
+          "unit": "g",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 15,
+          "table_name": "SupplementDayNutrients",
+          "entity_id": "758ad4c3-9261-5b32-a500-fc035dc2c894",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000305",
+          "id": "758ad4c3-9261-5b32-a500-fc035dc2c894",
+          "parent_id": "00000000-0000-4000-a000-000000000205",
+          "number": 3,
+          "nutrient_id": "fat",
+          "value": 0,
+          "unit": "g",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 16,
+          "table_name": "SupplementDayNutrients",
+          "entity_id": "98e8878c-d020-5f4e-a7a0-f9f7a0c2e6b5",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000305",
+          "id": "98e8878c-d020-5f4e-a7a0-f9f7a0c2e6b5",
+          "parent_id": "00000000-0000-4000-a000-000000000205",
+          "number": 4,
+          "nutrient_id": "carbohydrate",
+          "value": 4,
+          "unit": "g",
+          "source": "商品表示"
+        }
+      },
+      {
+        "change": {
+          "change_number": 17,
+          "table_name": "SupplementDayNutrients",
+          "entity_id": "157faa25-d27f-5182-a1b1-700357fd3144",
+          "revision": 1,
+          "indexed_revision": 1,
+          "removed": false,
+          "local_date": null
+        },
+        "record": {
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-a000-000000000305",
+          "id": "157faa25-d27f-5182-a1b1-700357fd3144",
+          "parent_id": "00000000-0000-4000-a000-000000000205",
+          "number": 5,
+          "nutrient_id": "vitamin_b12",
+          "value": 6,
+          "unit": "µg",
+          "source": "商品表示"
+        }
+      }
+    ]
+  },
+  "operations": [
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "action": "save_goal_rule",
+      "operation_id": "00000000-0000-4000-a000-000000000300",
+      "entity_id": "00000000-0000-4000-a000-000000000200",
+      "expected_revision": 0,
+      "payload": {
+        "goalRule": {
+          "id": "00000000-0000-4000-a000-000000000200",
+          "revision": 1,
+          "effectiveFrom": "2026-10-01",
+          "phase": "maintaining",
+          "base": {
+            "kcal": 2000,
+            "protein": 100,
+            "fat": 50,
+            "carbohydrate": 250
+          }
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "action": "save_daily_goal",
+      "operation_id": "00000000-0000-4000-a000-000000000301",
+      "entity_id": "00000000-0000-4000-a000-000000000201",
+      "expected_revision": 0,
+      "payload": {
+        "dailyGoal": {
+          "date": "2026-10-03",
+          "ruleID": "00000000-0000-4000-a000-000000000200",
+          "ruleRevision": 1,
+          "calculationVersion": "fixed-manual-v1",
+          "phase": "maintaining",
+          "base": {
+            "kcal": 2000,
+            "protein": 100,
+            "fat": 50,
+            "carbohydrate": 250
+          },
+          "manual": [
+            {
+              "id": "00000000-0000-4000-a000-000000000210",
+              "date": "2026-10-03",
+              "reason": "架空手動",
+              "delta": {
+                "kcal": 100,
+                "protein": 0,
+                "fat": 0,
+                "carbohydrate": 0
+              }
+            }
+          ],
+          "total": {
+            "kcal": 2100,
+            "protein": 100,
+            "fat": 50,
+            "carbohydrate": 250
+          },
+          "state": "frozen"
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "action": "save_food_day",
+      "operation_id": "00000000-0000-4000-a000-000000000302",
+      "entity_id": "00000000-0000-4000-a000-000000000202",
+      "expected_revision": 0,
+      "payload": {
+        "foodDay": {
+          "date": "2026-10-03",
+          "revision": 1,
+          "foodRevision": 0,
+          "status": "completed",
+          "completedFoodRevision": 0,
+          "completedAt": 1,
+          "completionOperationID": "00000000-0000-4000-a000-000000000302"
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "action": "save_supplement_product",
+      "operation_id": "00000000-0000-4000-a000-000000000303",
+      "entity_id": "00000000-0000-4000-a000-000000000203",
+      "expected_revision": 0,
+      "payload": {
+        "product": {
+          "id": "00000000-0000-4000-a000-000000000203",
+          "productID": "00000000-0000-4000-a000-000000000220",
+          "revision": 1,
+          "name": "架空サプリ",
+          "referenceAmount": 1,
+          "unit": "粒",
+          "nutrients": [
+            {
+              "nutrientID": "kcal",
+              "value": 10,
+              "unit": "kcal",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "protein",
+              "value": null,
+              "unit": "g",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "fat",
+              "value": 0,
+              "unit": "g",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "carbohydrate",
+              "value": 2,
+              "unit": "g",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "vitamin_b12",
+              "value": 3,
+              "unit": "µg",
+              "source": "商品表示"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "action": "save_supplement_plan",
+      "operation_id": "00000000-0000-4000-a000-000000000304",
+      "entity_id": "00000000-0000-4000-a000-000000000204",
+      "expected_revision": 0,
+      "payload": {
+        "plan": {
+          "id": "00000000-0000-4000-a000-000000000204",
+          "planID": "00000000-0000-4000-a000-000000000221",
+          "revision": 1,
+          "productVersionID": "00000000-0000-4000-a000-000000000203",
+          "dailyAmount": 2,
+          "effectiveFrom": "2026-10-01",
+          "autoCount": true
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "environment": "PHH_PRODUCTION",
+      "synthetic": true,
+      "approval_state": "confirmed",
+      "action": "save_supplement_day",
+      "operation_id": "00000000-0000-4000-a000-000000000305",
+      "entity_id": "00000000-0000-4000-a000-000000000205",
+      "expected_revision": 0,
+      "payload": {
+        "day": {
+          "id": "00000000-0000-4000-a000-000000000205",
+          "planID": "00000000-0000-4000-a000-000000000221",
+          "date": "2026-10-03",
+          "planVersionID": "00000000-0000-4000-a000-000000000204",
+          "productVersionID": "00000000-0000-4000-a000-000000000203",
+          "productName": "架空サプリ",
+          "amount": 2,
+          "unit": "粒",
+          "nutrients": [
+            {
+              "nutrientID": "kcal",
+              "value": 20,
+              "unit": "kcal",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "protein",
+              "value": null,
+              "unit": "g",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "fat",
+              "value": 0,
+              "unit": "g",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "carbohydrate",
+              "value": 4,
+              "unit": "g",
+              "source": "商品表示"
+            },
+            {
+              "nutrientID": "vitamin_b12",
+              "value": 6,
+              "unit": "µg",
+              "source": "商品表示"
+            }
+          ],
+          "revision": 1,
+          "state": "planned",
+          "dailyOverride": false
+        }
+      }
+    }
+  ]
+}

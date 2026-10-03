@@ -1,0 +1,990 @@
+{
+  "operation": {
+    "schema_version": 1,
+    "environment": "PHH_PRODUCTION",
+    "synthetic": true,
+    "approval_state": "confirmed",
+    "operation_id": "00000000-0000-4000-8000-000000000002",
+    "entity_id": "00000000-0000-4000-8000-000000000001",
+    "expected_revision": 0,
+    "action": "confirm_meal",
+    "payload": {
+      "local_date": "2026-10-01",
+      "slot": "間食",
+      "name": "記録テスト",
+      "quantity": 1,
+      "unit": "個",
+      "source": "本人",
+      "kcal": 100,
+      "protein_g": 10,
+      "fat_g": 0,
+      "carbohydrate_g": 15
+    }
+  },
+  "receipt": {
+    "environment": "PHH_PRODUCTION",
+    "operation_id": "00000000-0000-4000-8000-000000000002",
+    "status": "committed",
+    "error_code": null,
+    "entity_ids": [
+      "00000000-0000-4000-8000-000000000001"
+    ],
+    "revisions": [
+      1
+    ],
+    "committed_at": "2026-10-01T12:00:00.000Z",
+    "change_number": 7,
+    "retryable": false
+  },
+  "initial": {
+    "environment": "PHH_PRODUCTION",
+    "schema_version": 1,
+    "generation": 1,
+    "snapshot_revision": 7,
+    "changes": [
+      {
+        "change": {
+          "id": "1",
+          "change_number": 1,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "Meals",
+          "entity_id": "00000000-0000-4000-8000-000000000001",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000002",
+          "local_date": "2026-10-01",
+          "time_zone": "Asia/Tokyo",
+          "slot": "間食",
+          "number": 1,
+          "confirmed_at": "2026-10-01T12:00:00.000Z",
+          "last_app_edit_at": 1790856000000
+        }
+      },
+      {
+        "change": {
+          "id": "2",
+          "change_number": 2,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "MealItems",
+          "entity_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000002",
+          "meal_id": "00000000-0000-4000-8000-000000000001",
+          "name": "記録テスト",
+          "quantity": 1,
+          "unit": "個",
+          "source": "本人",
+          "reference_version": null,
+          "source_note": null
+        }
+      },
+      {
+        "change": {
+          "id": "3",
+          "change_number": 3,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000002",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "kcal",
+          "unit": "kcal",
+          "value": 100,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "4",
+          "change_number": 4,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000002",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "protein_g",
+          "unit": "g",
+          "value": 10,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "5",
+          "change_number": 5,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000002",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "fat_g",
+          "unit": "g",
+          "value": 0,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "6",
+          "change_number": 6,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000002",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "carbohydrate_g",
+          "unit": "g",
+          "value": 15,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "7",
+          "change_number": 7,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "DailySummary",
+          "entity_id": "2026-10-01",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "2026-10-01",
+          "local_date": "2026-10-01",
+          "revision": 1,
+          "meal_count": 1,
+          "training_set_count": 0,
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "kcal": 100,
+          "kcal_unknown": 0,
+          "protein_g": 10,
+          "protein_unknown": 0,
+          "fat_g": 0,
+          "fat_unknown": 0,
+          "carbohydrate_g": 15,
+          "carbohydrate_unknown": 0
+        }
+      }
+    ],
+    "next_cursor": 7,
+    "has_more": false
+  },
+  "latest": {
+    "environment": "PHH_PRODUCTION",
+    "schema_version": 1,
+    "generation": 1,
+    "snapshot_revision": 17,
+    "changes": [
+      {
+        "change": {
+          "id": "1",
+          "change_number": 1,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "Meals",
+          "entity_id": "00000000-0000-4000-8000-000000000001",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "local_date": "2026-10-01",
+          "time_zone": "Asia/Tokyo",
+          "slot": "間食",
+          "number": 1,
+          "confirmed_at": "2026-10-01T12:00:00.000Z",
+          "last_app_edit_at": 1790856000000
+        }
+      },
+      {
+        "change": {
+          "id": "2",
+          "change_number": 2,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "MealItems",
+          "entity_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "meal_id": "00000000-0000-4000-8000-000000000001",
+          "name": "記録テスト",
+          "quantity": 2,
+          "unit": "個",
+          "source": "本人",
+          "reference_version": null,
+          "source_note": null
+        }
+      },
+      {
+        "change": {
+          "id": "3",
+          "change_number": 3,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "kcal",
+          "unit": "kcal",
+          "value": 200,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "4",
+          "change_number": 4,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "protein_g",
+          "unit": "g",
+          "value": 20,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "5",
+          "change_number": 5,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "fat_g",
+          "unit": "g",
+          "value": 0,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "6",
+          "change_number": 6,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "IntakeNutrients",
+          "entity_id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "carbohydrate_g",
+          "unit": "g",
+          "value": 30,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "7",
+          "change_number": 7,
+          "operation_id": "00000000-0000-4000-8000-000000000002",
+          "table_name": "DailySummary",
+          "entity_id": "2026-10-01",
+          "revision": 3,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "2026-10-01",
+          "local_date": "2026-10-01",
+          "revision": 3,
+          "meal_count": 1,
+          "training_set_count": 1,
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "kcal": 200,
+          "kcal_unknown": 0,
+          "protein_g": 20,
+          "protein_unknown": 0,
+          "fat_g": 0,
+          "fat_unknown": 0,
+          "carbohydrate_g": 30,
+          "carbohydrate_unknown": 0
+        }
+      },
+      {
+        "change": {
+          "id": "8",
+          "change_number": 8,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "Meals",
+          "entity_id": "00000000-0000-4000-8000-000000000001",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 2
+        },
+        "record": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "local_date": "2026-10-01",
+          "time_zone": "Asia/Tokyo",
+          "slot": "間食",
+          "number": 1,
+          "confirmed_at": "2026-10-01T12:00:00.000Z",
+          "last_app_edit_at": 1790856000000
+        }
+      },
+      {
+        "change": {
+          "id": "9",
+          "change_number": 9,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "MealItems",
+          "entity_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 2
+        },
+        "record": {
+          "id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "meal_id": "00000000-0000-4000-8000-000000000001",
+          "name": "記録テスト",
+          "quantity": 2,
+          "unit": "個",
+          "source": "本人",
+          "reference_version": null,
+          "source_note": null
+        }
+      },
+      {
+        "change": {
+          "id": "10",
+          "change_number": 10,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "IntakeNutrients",
+          "entity_id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 2
+        },
+        "record": {
+          "id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "kcal",
+          "unit": "kcal",
+          "value": 200,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "11",
+          "change_number": 11,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "IntakeNutrients",
+          "entity_id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 2
+        },
+        "record": {
+          "id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "protein_g",
+          "unit": "g",
+          "value": 20,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "12",
+          "change_number": 12,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "IntakeNutrients",
+          "entity_id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 2
+        },
+        "record": {
+          "id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "fat_g",
+          "unit": "g",
+          "value": 0,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "13",
+          "change_number": 13,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "IntakeNutrients",
+          "entity_id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 2,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 2
+        },
+        "record": {
+          "id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 2,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000003",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "carbohydrate_g",
+          "unit": "g",
+          "value": 30,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "14",
+          "change_number": 14,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "DailySummary",
+          "entity_id": "2026-10-01",
+          "revision": 3,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 2
+        },
+        "record": {
+          "id": "2026-10-01",
+          "local_date": "2026-10-01",
+          "revision": 3,
+          "meal_count": 1,
+          "training_set_count": 1,
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "kcal": 200,
+          "kcal_unknown": 0,
+          "protein_g": 20,
+          "protein_unknown": 0,
+          "fat_g": 0,
+          "fat_unknown": 0,
+          "carbohydrate_g": 30,
+          "carbohydrate_unknown": 0
+        }
+      },
+      {
+        "change": {
+          "id": "15",
+          "change_number": 15,
+          "operation_id": "b0a92994-f940-588d-a395-98a802a49cd8",
+          "table_name": "TrainingSessions",
+          "entity_id": "af683379-5487-5eb8-ae63-bd01be697064",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "af683379-5487-5eb8-ae63-bd01be697064",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "conversation",
+          "last_operation_id": "b0a92994-f940-588d-a395-98a802a49cd8",
+          "local_date": "2026-10-01",
+          "time_zone": "Asia/Tokyo",
+          "session": "Pull",
+          "cycle_id": null,
+          "started_at": null,
+          "ended_at": null
+        }
+      },
+      {
+        "change": {
+          "id": "16",
+          "change_number": 16,
+          "operation_id": "b0a92994-f940-588d-a395-98a802a49cd8",
+          "table_name": "TrainingSets",
+          "entity_id": "00000000-0000-4000-8000-000000000004",
+          "revision": 1,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 1
+        },
+        "record": {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "revision": 1,
+          "status": "active",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "conversation",
+          "last_operation_id": "b0a92994-f940-588d-a395-98a802a49cd8",
+          "session_id": "af683379-5487-5eb8-ae63-bd01be697064",
+          "exercise": "ダンベルカール",
+          "set_no": 1,
+          "weight_kg": 10,
+          "reps": 8,
+          "rpe": null,
+          "rir": null,
+          "weight_basis": "通常",
+          "occurred_at": null
+        }
+      },
+      {
+        "change": {
+          "id": "17",
+          "change_number": 17,
+          "operation_id": "00000000-0000-4000-8000-000000000003",
+          "table_name": "DailySummary",
+          "entity_id": "2026-10-01",
+          "revision": 3,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 3
+        },
+        "record": {
+          "id": "2026-10-01",
+          "local_date": "2026-10-01",
+          "revision": 3,
+          "meal_count": 1,
+          "training_set_count": 1,
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "kcal": 200,
+          "kcal_unknown": 0,
+          "protein_g": 20,
+          "protein_unknown": 0,
+          "fat_g": 0,
+          "fat_unknown": 0,
+          "carbohydrate_g": 30,
+          "carbohydrate_unknown": 0
+        }
+      }
+    ],
+    "next_cursor": 17,
+    "has_more": false
+  },
+  "removal": {
+    "schema_version": 1,
+    "environment": "PHH_PRODUCTION",
+    "synthetic": true,
+    "approval_state": "confirmed",
+    "operation_id": "00000000-0000-4000-8000-000000000005",
+    "entity_id": "00000000-0000-4000-8000-000000000001",
+    "expected_revision": 2,
+    "action": "remove_meal",
+    "payload": null
+  },
+  "removalReceipt": {
+    "environment": "PHH_PRODUCTION",
+    "operation_id": "00000000-0000-4000-8000-000000000005",
+    "status": "committed",
+    "error_code": null,
+    "entity_ids": [
+      "00000000-0000-4000-8000-000000000001"
+    ],
+    "revisions": [
+      3
+    ],
+    "committed_at": "2026-10-01T12:00:00.000Z",
+    "change_number": 24,
+    "retryable": false
+  },
+  "removed": {
+    "environment": "PHH_PRODUCTION",
+    "schema_version": 1,
+    "generation": 1,
+    "snapshot_revision": 24,
+    "changes": [
+      {
+        "change": {
+          "id": "18",
+          "change_number": 18,
+          "operation_id": "00000000-0000-4000-8000-000000000005",
+          "table_name": "Meals",
+          "entity_id": "00000000-0000-4000-8000-000000000001",
+          "revision": 3,
+          "removed": true,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 3
+        },
+        "record": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "revision": 3,
+          "status": "removed",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000005",
+          "local_date": "2026-10-01",
+          "time_zone": "Asia/Tokyo",
+          "slot": "間食",
+          "number": 1,
+          "confirmed_at": "2026-10-01T12:00:00.000Z",
+          "last_app_edit_at": 1790856000000
+        }
+      },
+      {
+        "change": {
+          "id": "19",
+          "change_number": 19,
+          "operation_id": "00000000-0000-4000-8000-000000000005",
+          "table_name": "MealItems",
+          "entity_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 3,
+          "removed": true,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 3
+        },
+        "record": {
+          "id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "revision": 3,
+          "status": "removed",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000005",
+          "meal_id": "00000000-0000-4000-8000-000000000001",
+          "name": "記録テスト",
+          "quantity": 2,
+          "unit": "個",
+          "source": "本人",
+          "reference_version": null,
+          "source_note": null
+        }
+      },
+      {
+        "change": {
+          "id": "20",
+          "change_number": 20,
+          "operation_id": "00000000-0000-4000-8000-000000000005",
+          "table_name": "IntakeNutrients",
+          "entity_id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 3,
+          "removed": true,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 3
+        },
+        "record": {
+          "id": "79b06868-4a29-5033-a0b8-4f86696a016b",
+          "revision": 3,
+          "status": "removed",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000005",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "kcal",
+          "unit": "kcal",
+          "value": 200,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "21",
+          "change_number": 21,
+          "operation_id": "00000000-0000-4000-8000-000000000005",
+          "table_name": "IntakeNutrients",
+          "entity_id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 3,
+          "removed": true,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 3
+        },
+        "record": {
+          "id": "17ee97fa-9061-5c0c-a30e-096ca7fe2038",
+          "revision": 3,
+          "status": "removed",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000005",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "protein_g",
+          "unit": "g",
+          "value": 20,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "22",
+          "change_number": 22,
+          "operation_id": "00000000-0000-4000-8000-000000000005",
+          "table_name": "IntakeNutrients",
+          "entity_id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 3,
+          "removed": true,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 3
+        },
+        "record": {
+          "id": "9589a1c3-b199-5eff-ab67-6103f97362e2",
+          "revision": 3,
+          "status": "removed",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000005",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "fat_g",
+          "unit": "g",
+          "value": 0,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "23",
+          "change_number": 23,
+          "operation_id": "00000000-0000-4000-8000-000000000005",
+          "table_name": "IntakeNutrients",
+          "entity_id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 3,
+          "removed": true,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 3
+        },
+        "record": {
+          "id": "4275b2ec-727b-5868-a954-130306a1a702",
+          "revision": 3,
+          "status": "removed",
+          "created_at": "2026-10-01T12:00:00.000Z",
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "source_kind": "app",
+          "last_operation_id": "00000000-0000-4000-8000-000000000005",
+          "item_id": "a526d90c-0619-5e07-a3ea-5ae35fdf94ea",
+          "nutrient_id": "carbohydrate_g",
+          "unit": "g",
+          "value": 30,
+          "value_status": "reference"
+        }
+      },
+      {
+        "change": {
+          "id": "24",
+          "change_number": 24,
+          "operation_id": "b0a92994-f940-588d-a395-98a802a49cd8",
+          "table_name": "DailySummary",
+          "entity_id": "2026-10-01",
+          "revision": 4,
+          "removed": false,
+          "local_date": "2026-10-01",
+          "changed_at": "2026-10-01T12:00:00.000Z",
+          "indexed_revision": 4
+        },
+        "record": {
+          "id": "2026-10-01",
+          "local_date": "2026-10-01",
+          "revision": 4,
+          "meal_count": 0,
+          "training_set_count": 1,
+          "updated_at": "2026-10-01T12:00:00.000Z",
+          "kcal": 0,
+          "kcal_unknown": 0,
+          "protein_g": 0,
+          "protein_unknown": 0,
+          "fat_g": 0,
+          "fat_unknown": 0,
+          "carbohydrate_g": 0,
+          "carbohydrate_unknown": 0
+        }
+      }
+    ],
+    "next_cursor": 24,
+    "has_more": false
+  }
+}
