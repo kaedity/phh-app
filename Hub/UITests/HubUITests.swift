@@ -586,10 +586,61 @@ import XCTest
         tap("検索と記録の設定",app:app);tap("成分表示から登録",app:app)
         tap("food-label-preview-sample",app:app)
         let name=app.textFields["food-label-name"];reveal(name,app:app);name.tap();name.typeText("架空バー")
-        let confirm=app.switches["food-label-reviewed"];reveal(confirm,app:app);confirm.tap()
+        tap("入力を終える", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3), .completed)
+        let confirm=app.switches["food-label-reviewed"];reveal(confirm,app:app)
+        // 標準Toggleのアクセシビリティ枠は説明文も含むため、右端のスイッチを押します。
+        confirm.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["food-label-save"].isEnabled)
         tap("food-label-save",app:app)
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.buttons["food-label-save"])],timeout:3),.completed)
         proof(app,"p84-label-registered")
+    }
+    func testSupplementAmountSaveClosesEditorAndShowsPendingChange() {
+        let app = launch(["--p5-preview", "--light"])
+        tap("カテゴリー内のサプリ・自動計上", app: app)
+        tap("この日だけ量を変更", app: app)
+        let amount = app.textFields["粒"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 3))
+        amount.tap(); amount.typeText(XCUIKeyboardKey.delete.rawValue + "3")
+        tap("この日だけ変更を保存", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["量の例外"])], timeout: 3), .completed)
+        XCTAssertTrue(app.staticTexts["送信待ち：3 粒"].exists)
+        XCTAssertFalse(app.buttons["この日だけ量を変更"].isEnabled)
+        proof(app, "supplement-amount-queued")
+    }
+    func testSupplementInvalidAmountKeepsInputAndDiscardLeavesDayUnchanged() {
+        let app = launch(["--p5-preview", "--dark"])
+        tap("カテゴリー内のサプリ・自動計上", app: app)
+        tap("この日だけ量を変更", app: app)
+        let amount = app.textFields["粒"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 3))
+        amount.tap(); amount.typeText(XCUIKeyboardKey.delete.rawValue + "0")
+        tap("この日だけ変更を保存", app: app)
+        XCTAssertTrue(app.staticTexts["supplement-amount-error"].exists)
+        XCTAssertTrue(app.navigationBars["量の例外"].exists)
+        proof(app, "supplement-invalid-amount-kept")
+        tap("閉じる", app: app); tap("続ける", app: app)
+        XCTAssertEqual(amount.value as? String, "0")
+        tap("閉じる", app: app); tap("破棄して閉じる", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["量の例外"])], timeout: 3), .completed)
+        XCTAssertFalse(app.staticTexts["supplement-pending-amount"].exists)
+        tap("この日だけ量を変更", app: app)
+        XCTAssertEqual(amount.value as? String, "2")
+    }
+    func testFoodLabelClosePreservesManualEntryUntilExplicitDiscard() {
+        let app = launch(["--p4-preview", "--light"])
+        tap("検索と記録の設定", app: app); tap("成分表示から登録", app: app)
+        let name = app.textFields["food-label-name"]
+        reveal(name, app: app); name.tap(); name.typeText("架空の未保存食品")
+        tap("food-label-close", app: app); tap("続ける", app: app)
+        XCTAssertEqual(name.value as? String, "架空の未保存食品")
+        proof(app, "label-unsaved-input-kept")
+        tap("food-label-close", app: app); tap("破棄して閉じる", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: name)], timeout: 3), .completed)
+        XCTAssertTrue(app.staticTexts["175"].exists)
+        tap("検索と記録の設定", app: app); tap("成分表示から登録", app: app)
+        XCTAssertEqual(name.value as? String, "食品名（プリセット名）")
     }
     func testReferenceFoodSourceAndConfirmationAreVisible() {
         let app=launch(["--p4-preview","--light"])

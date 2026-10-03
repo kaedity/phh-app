@@ -14,6 +14,7 @@ struct FoodLabelPage: View {
   @State private var selectedPhoto: PhotosPickerItem?
   @State private var labelReading: FoodLabelReading?
   @State private var entry: FoodLabelEntry
+  private let initialEntry: FoodLabelEntry
   @State private var categoryID: String?
   @State private var confirmed = false
   @State private var loading = false
@@ -21,9 +22,11 @@ struct FoodLabelPage: View {
   @State private var saving = false
   @State private var camera = false
   @State private var error = ""
+  @State private var confirmClose = false
   @State private var photoTask: Task<Void, Never>?
   @State private var recognitionTask: Task<Void, Never>?
   @State private var captureID = UUID()
+  @FocusState private var focusedField: String?
   #if DEBUG
     @State private var previewText: String
   #endif
@@ -38,10 +41,15 @@ struct FoodLabelPage: View {
       let reading: FoodLabelReading? = nil
     #endif
     _labelReading = State(initialValue: reading)
-    _entry = State(initialValue: FoodLabelEntry(reading: reading ?? FoodLabelParser.read("")))
+    let initial = FoodLabelEntry(reading: reading ?? FoodLabelParser.read(""))
+    initialEntry = initial
+    _entry = State(initialValue: initial)
   }
 
   private var busy: Bool { loading || recognizing || saving }
+  private var hasInput: Bool {
+    imageData != nil || selectedPhoto != nil || labelReading != nil || entry != initialEntry || categoryID != nil || confirmed || busy
+  }
 
   var body: some View {
     Form {
@@ -73,12 +81,22 @@ struct FoodLabelPage: View {
     }
     .navigationTitle("成分表示から登録")
     .navigationBarTitleDisplayMode(.inline)
+    .scrollDismissesKeyboard(.interactively)
     .toolbar {
       ToolbarItem(placement: .cancellationAction) {
-        Button("閉じる") { releaseImage(); dismiss() }
+        Button("閉じる") { if hasInput { confirmClose = true } else { closeSheet() } }
           .accessibilityIdentifier("food-label-close")
       }
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer()
+        Button("入力を終える") { focusedField = nil }
+      }
     }
+    .interactiveDismissDisabled(hasInput)
+    .alert("入力を破棄して閉じますか？", isPresented: $confirmClose) {
+      Button("破棄して閉じる", role: .destructive) { closeSheet() }
+      Button("続ける", role: .cancel) {}
+    } message: { Text("まだ登録されていません。写真・読み取り結果・手入力が消えます。") }
     .onChange(of: selectedPhoto) { _, photo in
       guard let photo else { return }
       loadPhoto(photo)
@@ -98,6 +116,8 @@ struct FoodLabelPage: View {
   private var captureSection: some View {
     Section("成分表示を読み取る") {
       Text("成分表示が大きく写る写真を選んでください。画像の文字は端末内で読み取ります。")
+        .font(.subheadline).foregroundStyle(.secondary)
+      Text("写真がない場合は、下の食品名・基準量・栄養値へ直接入力できます。")
         .font(.subheadline).foregroundStyle(.secondary)
       if let data = imageData, let ui = UIImage(data: data) {
         Image(uiImage: ui).resizable().scaledToFit().frame(maxHeight: 200)
@@ -128,6 +148,7 @@ struct FoodLabelPage: View {
     Section("食品名と表示基準量") {
       LabeledContent("食品名") {
         TextField("食品名（プリセット名）", text: $entry.name)
+          .focused($focusedField, equals: "name")
           .accessibilityIdentifier("food-label-name")
       }
       if let basis = labelReading?.basis {
@@ -136,10 +157,12 @@ struct FoodLabelPage: View {
       }
       LabeledContent("基準量") {
         TextField("表示基準量", text: $entry.quantity).keyboardType(.decimalPad)
+          .focused($focusedField, equals: "quantity")
           .accessibilityIdentifier("food-label-quantity")
       }
       LabeledContent("単位") {
         TextField("g・食・袋など", text: $entry.unit)
+          .focused($focusedField, equals: "unit")
           .accessibilityIdentifier("food-label-unit")
       }
       Text("下の栄養値は、この基準量に対応します。100g当たり・1食当たりなど、表示と同じ量を確認してください。")
@@ -166,7 +189,7 @@ struct FoodLabelPage: View {
 
   private func nutrientField(_ title: String, value: Binding<String>, id: String) -> some View {
     LabeledContent(title) {
-      TextField("不明", text: value).keyboardType(.decimalPad).accessibilityIdentifier(id)
+      TextField("不明", text: value).keyboardType(.decimalPad).focused($focusedField, equals: id).accessibilityIdentifier(id)
     }
   }
 
@@ -296,6 +319,7 @@ struct FoodLabelPage: View {
     loading = false
     recognizing = false
   }
+  private func closeSheet() { releaseImage(); dismiss() }
 }
 
 private enum FoodLabelImageFailure: Error, LocalizedError {

@@ -80,7 +80,7 @@ import SwiftUI
       try PlanningHubStore(hub: hub).enqueue([op])
     }
   }
-  func change(_ day: SupplementDay, amount: Double? = nil, state: SupplementDayState) {
+  @discardableResult func change(_ day: SupplementDay, amount: Double? = nil, state: SupplementDayState) -> Bool {
     perform {
       var ledger = try supplements()
       let changed = try ledger.change(planID: day.planID, date: day.date,
@@ -92,9 +92,9 @@ import SwiftUI
   private func save(_ value: PlanningMutation, id: String, revision: Int) throws {
     try PlanningHubStore(hub: hub).enqueue([HubOperation(planning: value, entityID: id, expectedRevision: revision)])
   }
-  private func perform(_ work: () throws -> Void) {
-    do { try work(); try refresh(); message = "端末に保存しました・同期待ち"; onSaved() }
-    catch { message = error.localizedDescription }
+  @discardableResult private func perform(_ work: () throws -> Void) -> Bool {
+    do { try work(); try refresh(); message = "端末に保存しました・同期待ち"; onSaved(); return true }
+    catch { message = error.localizedDescription; return false }
   }
 }
 
@@ -252,10 +252,16 @@ struct SupplementPage: View {
             Text("\(foodNumber(day.amount)) \(day.unit)")
             Text(day.state == .planned ? "予定から自動計上・服用確認なし" : day.state == .confirmed ? "服用確認済み" : "この日は除外")
               .font(.caption).foregroundStyle(.secondary)
+            if let pending = waitingChange(day), let changed = pending.operation.planning?.day {
+              Text("\(pendingTitle(pending.state))：\(foodNumber(changed.amount)) \(changed.unit)")
+                .font(.subheadline).accessibilityIdentifier("supplement-pending-amount")
+              Text("この日の変更が終わるまで、再変更はできません。")
+                .font(.caption).foregroundStyle(.secondary)
+            }
             ViewThatFits(in: .horizontal) {
               HStack { dayActions(day) }.fixedSize(horizontal: true, vertical: false)
               VStack(alignment: .leading) { dayActions(day) }
-            }.buttonStyle(.bordered)
+            }.buttonStyle(.bordered).disabled(waitingChange(day) != nil)
           }
         }
         ForEach(ledger.plans.sorted { $0.revision > $1.revision }.filter { p in
@@ -270,7 +276,17 @@ struct SupplementPage: View {
         }
       }
       PlanningQueueCard(model: model)
-    }.sheet(item: $editing) { SupplementAmountEditor(model: model, day: $0) }
+    }.sheet(item: $editing) { SupplementAmountEditor(model: model, day: $0, close: { editing = nil }) }
+  }
+  private func waitingChange(_ day: SupplementDay) -> Pending? {
+    model.pending.first { $0.operation.planning?.day?.id == day.id }
+  }
+  private func pendingTitle(_ state: PendingState) -> String {
+    switch state {
+    case .queued: "送信待ち"
+    case .authentication: "再接続が必要"
+    case .invalid, .conflict: "要確認"
+    }
   }
   @ViewBuilder private func dayActions(_ day: SupplementDay) -> some View {
     Button("この日だけ量を変更") { editing = day }
@@ -281,9 +297,12 @@ struct SupplementPage: View {
 }
 private struct SupplementAmountEditor: View {
   let model: PlanningScreenModel, day: SupplementDay
+  let close: () -> Void
   @State private var amount: String
   @State private var error = ""
-  init(model: PlanningScreenModel, day: SupplementDay) { self.model = model; self.day = day; _amount = State(initialValue: foodNumber(day.amount)) }
+  @State private var confirmClose = false
+  init(model: PlanningScreenModel, day: SupplementDay, close: @escaping () -> Void) { self.model = model; self.day = day; self.close = close; _amount = State(initialValue: foodNumber(day.amount)) }
+  private var hasInput: Bool { amount != foodNumber(day.amount) }
   var body: some View {
     NavigationStack {
       Form {
@@ -291,12 +310,19 @@ private struct SupplementAmountEditor: View {
         TextField(day.unit, text: $amount).keyboardType(.decimalPad)
         Button("この日だけ変更を保存") {
           do { guard let value = try planningNumber(amount) else { throw SupplementFailure.invalidValue }
-            model.change(day, amount: value, state: day.state); error = model.message
+            if model.change(day, amount: value, state: day.state) { Haptics.emit(.success); close() }
+            else { error = model.message }
           } catch { self.error = error.localizedDescription }
         }.buttonStyle(.borderedProminent).foregroundStyle(Color(uiColor: .systemBackground))
-        Text(error)
-      }.navigationTitle("量の例外")
+        if !error.isEmpty { Text(error).foregroundStyle(.red).accessibilityIdentifier("supplement-amount-error") }
+      }.navigationTitle("量の例外").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { if hasInput { confirmClose = true } else { close() } } } }
     }
+    .interactiveDismissDisabled(hasInput)
+    .alert("変更を破棄して閉じますか？", isPresented: $confirmClose) {
+      Button("破棄して閉じる", role: .destructive) { close() }
+      Button("続ける", role: .cancel) {}
+    } message: { Text("まだ保存していない量の変更が消えます。") }
   }
 }
 struct PlanningQueueCard: View {
