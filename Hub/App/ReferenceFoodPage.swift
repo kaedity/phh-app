@@ -116,6 +116,13 @@ private struct ReferenceFoodConfirmationPage: View {
   @State private var confirmed = false
   @State private var saving = false
   @State private var error = ""
+  @State private var confirmBack = false
+  @FocusState private var focusedField: Field?
+  private enum Field: Hashable { case name, quantity }
+
+  private var hasInput: Bool {
+    presetName != food.name || quantity != "100" || categoryID != nil || confirmed
+  }
 
   init(
     model: FoodScreenModel, database: ReferenceFoodDatabase, food: ReferenceFood,
@@ -155,10 +162,13 @@ private struct ReferenceFoodConfirmationPage: View {
       Section("プリセットの量") {
         LabeledContent("プリセット名") {
           TextField("プリセット名", text: $presetName)
+            .focused($focusedField, equals: .name).submitLabel(.next)
+            .onSubmit { focusedField = .quantity }
             .accessibilityIdentifier("reference-food-preset-name")
         }
         LabeledContent("既定量（g）") {
           TextField("既定量", text: $quantity).keyboardType(.decimalPad)
+            .focused($focusedField, equals: .quantity)
             .accessibilityIdentifier("reference-food-quantity")
         }
         Text("食品の基準は100gのまま保存し、プリセットではここで指定した可食部の量を使います。")
@@ -190,11 +200,22 @@ private struct ReferenceFoodConfirmationPage: View {
     }
     .navigationTitle("成分表の食品を確認")
     .navigationBarTitleDisplayMode(.inline)
+    .scrollDismissesKeyboard(.interactively)
     .toolbar {
       ToolbarItem(placement: .cancellationAction) {
-        Button("戻る") { dismiss() }.accessibilityIdentifier("reference-food-back")
+        Button("戻る") { if hasInput { confirmBack = true } else { dismiss() } }
+          .disabled(saving).accessibilityIdentifier("reference-food-back")
+      }
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer()
+        Button("入力を終える") { focusedField = nil }
       }
     }
+    .interactiveDismissDisabled(hasInput || saving)
+    .alert("入力を破棄して戻りますか？", isPresented: $confirmBack) {
+      Button("破棄して戻る", role: .destructive) { dismiss() }
+      Button("続ける", role: .cancel) {}
+    } message: { Text("まだ登録されていません。変更したプリセット名・量・カテゴリーが消えます。") }
     .onChange(of: presetName) { _, _ in confirmed = false }
     .onChange(of: quantity) { _, _ in confirmed = false }
     .onChange(of: categoryID) { _, _ in confirmed = false }

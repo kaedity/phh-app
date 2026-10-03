@@ -650,6 +650,54 @@ import XCTest
         XCTAssertTrue(app.textFields["reference-food-quantity"].waitForExistence(timeout:3))
         proof(app,"p84-reference-food-confirmation")
     }
+    func testReferenceFoodCustomQuantityIsKeptUntilExplicitDiscard() {
+        let app = launch(["--p4-preview", "--dark"])
+        tap("検索と記録の設定", app: app); tap("食品成分表から登録", app: app)
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 3)); search.tap(); search.typeText("07107")
+        tap("reference-food-row-07107", app: app)
+        let amount = app.textFields["reference-food-quantity"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 3)); amount.tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "50")
+        tap("reference-food-back", app: app)
+        let discard = app.alerts["入力を破棄して戻りますか？"]
+        XCTAssertTrue(discard.waitForExistence(timeout: 3))
+        tap("続ける", app: app)
+        XCTAssertEqual(amount.value as? String, "50")
+        proof(app, "reference-custom-quantity-kept")
+        tap("reference-food-back", app: app); tap("破棄して戻る", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: amount)], timeout: 3), .completed)
+        tap("reference-food-row-07107", app: app)
+        XCTAssertEqual(amount.value as? String, "100")
+        tap("reference-food-back", app: app)
+        XCTAssertTrue(app.buttons["reference-food-row-07107"].exists)
+    }
+    func testReferenceFoodKeyboardEndsAndConfirmedPresetRegisters() {
+        let app = launch(["--p4-preview", "--light"])
+        tap("検索と記録の設定", app: app); tap("食品成分表から登録", app: app)
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 3)); search.tap(); search.typeText("07107")
+        tap("reference-food-row-07107", app: app)
+        let name = app.textFields["reference-food-preset-name"]
+        reveal(name, app: app); name.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (name.value as? String)?.count ?? 0) + "架空の成分表食品")
+        XCTAssertEqual(name.value as? String, "架空の成分表食品")
+        let amount = app.textFields["reference-food-quantity"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 3)); amount.tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "50")
+        tap("入力を終える", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3), .completed)
+        let reviewed = app.switches["reference-food-reviewed"]
+        reveal(reviewed, app: app)
+        reviewed.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["reference-food-save"].isEnabled)
+        tap("reference-food-save", app: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: amount)], timeout: 3), .completed)
+        XCTAssertTrue(app.staticTexts["175"].exists)
+        let registered = app.staticTexts["架空の成分表食品"]
+        reveal(registered, app: app); XCTAssertTrue(registered.exists)
+        proof(app, "reference-50g-preset-registered")
+    }
     func testEnergyReviewShowsMissingEvidenceWithoutChangingTarget() {
         let app=launch(["--p7-preview","--light"])
         tab("その他",app:app);tap("energy-review-link",app:app)
