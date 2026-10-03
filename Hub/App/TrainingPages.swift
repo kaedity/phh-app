@@ -100,7 +100,7 @@ struct TrainingCalendarPage: View {
     let status: String
     let cycles:[TrainingCycleReference]
     let saveReference:((TrainingCycleReference) async -> String)?
-    let updateSession:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> String)?
+    let updateSession:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> TrainingSessionSaveResult)?
     @State var reference: TrainingCycleReference?
     @State private var month: Date
     @State private var selected: String
@@ -108,7 +108,7 @@ struct TrainingCalendarPage: View {
     @State private var importMessage: String?
     @State private var registeringCycle=false
     @State private var showingCycleRecording=false
-    init(snapshot:TrainingSnapshot,status:String,reference:TrainingCycleReference?=nil,date:Date=Date(),cycles:[TrainingCycleReference]=[],saveReference:((TrainingCycleReference) async -> String)?=nil,updateSession:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> String)?=nil) {
+    init(snapshot:TrainingSnapshot,status:String,reference:TrainingCycleReference?=nil,date:Date=Date(),cycles:[TrainingCycleReference]=[],saveReference:((TrainingCycleReference) async -> String)?=nil,updateSession:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> TrainingSessionSaveResult)?=nil) {
         self.snapshot=snapshot;self.status=status;self.cycles=cycles;self.saveReference=saveReference;self.updateSession=updateSession;_reference=State(initialValue:reference)
         _month=State(initialValue:TrainingDates.calendar.date(from:TrainingDates.calendar.dateComponents([.year,.month],from:date))!);_selected=State(initialValue:TrainingDates.string(date))
     }
@@ -246,15 +246,37 @@ struct TrainingCycleRecordingPage: View {
     }
 }
 
+struct TrainingSessionSaveResult: Sendable {
+    let accepted: Bool
+    let message: String
+}
 struct TrainingSessionPage: View {
     let snapshot: TrainingSnapshot, session: TrainingSession
     var cycles:[TrainingCycleReference]=[]
-    var onUpdate:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> String)?=nil
+    var onUpdate:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> TrainingSessionSaveResult)?=nil
     @State private var cycleID=""
     @State private var slotID=""
     @State private var lifecycle:TrainingLifecycle = .inProgress
     @State private var saving=false
     @State private var saveMessage:String?
+    @State private var saveFailed=false
+    private struct Selection: Equatable {
+        let cycleID: String, slotID: String, lifecycle: TrainingLifecycle
+        init(cycleID: String, slotID: String, lifecycle: TrainingLifecycle) { self.cycleID=cycleID; self.slotID=slotID; self.lifecycle=lifecycle }
+        init(_ session: TrainingSession) { self.init(cycleID:session.cycleID ?? "",slotID:session.slotID ?? "",lifecycle:session.lifecycle) }
+    }
+    @State private var savedSelection: Selection?
+    @State private var acceptedSelection: Selection
+    @State private var confirmBack = false
+    @Environment(\.dismiss) private var dismiss
+    init(snapshot:TrainingSnapshot,session:TrainingSession,cycles:[TrainingCycleReference]=[],
+         onUpdate:((TrainingSession,TrainingLifecycle,TrainingCycleReference?,TrainingPlanSlot?) async -> TrainingSessionSaveResult)?=nil) {
+        self.snapshot=snapshot;self.session=session;self.cycles=cycles;self.onUpdate=onUpdate
+        let initial=Selection(session);_cycleID=State(initialValue:initial.cycleID);_slotID=State(initialValue:initial.slotID)
+        _lifecycle=State(initialValue:initial.lifecycle);_acceptedSelection=State(initialValue:initial)
+    }
+    private var selection: Selection { .init(cycleID:cycleID,slotID:slotID,lifecycle:lifecycle) }
+    private var hasUnsavedInput: Bool { selection != acceptedSelection }
     private var cycle:TrainingCycleReference? { cycles.first {$0.id==cycleID} }
     private func exerciseGroups(_ sets: [TrainingSet]) -> [(name: String, sets: [TrainingSet])] {
         var order: [String] = []; var groups: [String: [TrainingSet]] = [:]
@@ -278,11 +300,26 @@ struct TrainingSessionPage: View {
             if let onUpdate {
                 Card {
                     Text("Cycleとセッションの状態").font(.headline)
-                    Picker("Cycle",selection:Binding(get:{cycleID},set:{cycleID=$0;slotID=""})) { Text("未設定・追加トレーニング").tag("");ForEach(cycles) { Text($0.name).tag($0.id) } }
-                    if let cycle { Picker("予定枠",selection:$slotID) { Text("追加トレーニング").tag("");ForEach(cycle.slots.filter {$0.kind==session.kind}) { Text("\($0.number) · \($0.label)").tag($0.id) } } }
-                    Picker("状態",selection:$lifecycle) { Text("予定").tag(TrainingLifecycle.planned);Text("途中").tag(TrainingLifecycle.inProgress);Text("完了").tag(TrainingLifecycle.completed);Text("取消").tag(TrainingLifecycle.cancelled) }
-                    Button { guard !saving else { return }; saving=true; Task { saveMessage=await onUpdate(session,lifecycle,cycle,cycle?.slots.first {$0.id==slotID});saving=false } } label: { MotionSaveLabel(title: "状態を保存", busy: saving, saved: saveMessage?.hasPrefix("端末に保存") == true) }.buttonStyle(.borderedProminent).disabled(saving).accessibilityLabel(saving ? "保存中…" : "状態を保存")
-                    if let saveMessage { Text(saveMessage).font(.subheadline).foregroundStyle(.secondary) }
+                    Picker("Cycle",selection:Binding(get:{cycleID},set:{cycleID=$0;slotID=""})) { Text("未設定・追加トレーニング").tag("");ForEach(cycles) { Text($0.name).tag($0.id) } }.accessibilityIdentifier("training-session-cycle").disabled(saving)
+                    if let cycle { Picker("予定枠",selection:$slotID) { Text("追加トレーニング").tag("");ForEach(cycle.slots.filter {$0.kind==session.kind}) { Text("\($0.number) · \($0.label)").tag($0.id) } }.accessibilityIdentifier("training-session-slot").disabled(saving) }
+                    Picker("状態",selection:$lifecycle) { Text("予定").tag(TrainingLifecycle.planned);Text("途中").tag(TrainingLifecycle.inProgress);Text("完了").tag(TrainingLifecycle.completed);Text("取消").tag(TrainingLifecycle.cancelled) }.accessibilityIdentifier("training-session-lifecycle").disabled(saving)
+                    Button {
+                        guard !saving else { return }
+                        let submitted=selection,submittedCycle=cycle,submittedSlot=cycle?.slots.first {$0.id==slotID}
+                        saving=true
+                        Task {
+                            let result=await onUpdate(session,submitted.lifecycle,submittedCycle,submittedSlot)
+                            saveMessage=result.message;saveFailed = !result.accepted
+                            savedSelection=result.accepted ? submitted:nil
+                            if result.accepted { acceptedSelection=submitted; Haptics.emit(.success) }
+                            saving=false
+                        }
+                    } label: { MotionSaveLabel(title:"状態を保存",busy:saving,saved:savedSelection == selection) }
+                    .buttonStyle(.borderedProminent).disabled(saving || savedSelection == selection)
+                    .foregroundStyle(Color(uiColor:(saving || savedSelection == selection) ? .label:.systemBackground))
+                    .accessibilityLabel(saving ? "保存中…" : savedSelection == selection ? "状態を端末に保存しました":"状態を保存")
+                    .accessibilityIdentifier("training-session-save")
+                    if let saveMessage { Text(saveMessage).font(.subheadline).foregroundStyle(saveFailed ? .red:.secondary).accessibilityIdentifier("training-session-result") }
                     Text("完了を選んで保存した予定枠だけ、9枠の進捗へ数えます。").font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -322,7 +359,24 @@ struct TrainingSessionPage: View {
                     }
                 }
             }
-        }.onAppear { cycleID=session.cycleID ?? "";slotID=session.slotID ?? "";lifecycle=session.lifecycle }
+        }
+        .navigationBarBackButtonHidden(onUpdate != nil)
+        .toolbar {
+            if onUpdate != nil {
+                ToolbarItem(placement:.cancellationAction) {
+                    Button("戻る") { if hasUnsavedInput { confirmBack=true } else { dismiss() } }
+                        .disabled(saving).accessibilityIdentifier("training-session-back")
+                }
+            }
+        }
+        .alert("変更を破棄して戻りますか？",isPresented:$confirmBack) {
+            Button("破棄して戻る",role:.destructive) { dismiss() }
+            Button("続ける",role:.cancel) {}
+        } message: { Text("まだ保存していないCycle・予定枠・状態の選択が消えます。端末に保存した変更は残ります。") }
+        .onChange(of:selection) { _,_ in savedSelection=nil;saveMessage=nil;saveFailed=false }
+        .onChange(of:session) { _,value in
+            if savedSelection == Selection(value) { saveMessage="Googleへの保存を確認しました。" }
+        }
     }
 }
 private struct TrainingSetSummary: View {

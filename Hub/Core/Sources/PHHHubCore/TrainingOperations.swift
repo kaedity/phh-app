@@ -36,3 +36,17 @@ public extension TrainingCycleReference {
         }.sorted {$0.name<$1.name}
     }
 }
+
+public enum TrainingSessionSaveFailure: Error, LocalizedError {
+    case pending, readbackPending
+    public var errorDescription: String? {
+        switch self {
+        case .pending: "このセッションに未完了の変更があります。その他の送信待ちを確認してください。"
+        case .readbackPending: "このセッションはGoogleへの保存後の再取得待ちです。同期が終わってから再保存してください。"
+        }
+    }
+}
+struct TrainingSessionAcknowledgement: Codable {
+    let generation: Int
+    let operation: HubOperation
+}

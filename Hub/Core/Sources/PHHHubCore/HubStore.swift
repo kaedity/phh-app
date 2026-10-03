@@ -177,6 +177,33 @@ import CoreData
           p.attempts == 0, p.state == .queued else { throw HubError.invalidOperation }
         try atomic { if let row = try find("Outbox", id) { context.delete(row) } }
     }
+    /// 端末保存を先に確定し、送信待ち/受領後の読戻し待ちで同じSessionを二重更新しません。
+    public func enqueueTrainingSessionUpdate(sessionID: String, state: TrainingLifecycle,
+        cycle: TrainingCycleReference? = nil, slot: TrainingPlanSlot? = nil, synthetic: Bool = true) throws -> HubOperation {
+        guard try trainingContract == 1 else { throw HubError.configuration }
+        guard let current = try rows(table: "TrainingSessions").first(where: { $0.entityID == sessionID && $0.active }) else { throw HubError.invalidOperation }
+        guard try pending().allSatisfy({ $0.operation.entity_id != sessionID }) else { throw TrainingSessionSaveFailure.pending }
+        if let slot {
+            guard let cycle, cycle.slots.contains(slot),
+                try TrainingSnapshot(rows: [current]).sessions.first?.kind == slot.kind else { throw HubError.invalidOperation }
+        }
+        let key = "session_ack:" + sessionID
+        if let text = try meta(key) {
+            let acknowledgement = try JSONDecoder().decode(TrainingSessionAcknowledgement.self, from: Data(text.utf8))
+            let received = acknowledgement.operation; try received.validate()
+            guard received.entity_id == sessionID, received.trainingSession != nil else { throw HubError.invalidResponse }
+            if acknowledgement.generation == (try generation) {
+                guard current.revision > received.expected_revision else { throw TrainingSessionSaveFailure.readbackPending }
+            }
+        }
+        var operation = HubOperation(sessionID: sessionID, revision: current.revision, state: state, cycle: cycle, slot: slot)
+        operation.synthetic = synthetic; try operation.validate()
+        try atomic {
+            try insertQueued(operation)
+            if let obsolete = try find("Meta", key) { context.delete(obsolete) }
+        }
+        return operation
+    }
     public func markAttempted(_ id:String) throws {
         try atomic { guard let row=try find("Outbox",id) else {throw HubError.invalidOperation};row.setValue((row.value(forKey:"attempts") as? Int ?? 0)+1,forKey:"attempts") }
     }
@@ -271,6 +298,10 @@ import CoreData
                 if (previous?.revision ?? 0)<meal.revision {try setMeta(key,String(decoding:encoder.encode(meal),as:UTF8.self))}
             }
             if operation.trainingCycle != nil {try setMeta("cycle_ack:"+operation.entity_id,String(decoding:encoder.encode(operation),as:UTF8.self))}
+            if operation.trainingSession != nil {
+                let acknowledgement = TrainingSessionAcknowledgement(generation:try generation,operation:operation)
+                try setMeta("session_ack:"+operation.entity_id,String(decoding:encoder.encode(acknowledgement),as:UTF8.self))
+            }
             if let restored=try hydrationUndoRestoration(operation.id) {
                 guard restored.entity_id==operation.entity_id,restored.expected_revision==operation.hydration?.revision else {throw HubError.invalidOperation}
                 try insertQueued(restored)

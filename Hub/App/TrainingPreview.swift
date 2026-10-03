@@ -6,7 +6,17 @@ import PHHHubCore
 struct TrainingPreviewRoot: View {
     private var empty: Bool { ProcessInfo.processInfo.arguments.contains("--empty") }
     var body: some View { NavigationStack {
-        if ProcessInfo.processInfo.arguments.contains("--grades") { TrainingGradesPage(snapshot:empty ? .empty:TrainingPreviewData.snapshot,date:TrainingPreviewData.date) }
+        if ProcessInfo.processInfo.arguments.contains("--session-edit") {
+            NavigationLink("架空のSessionを開く") {
+                TrainingSessionPage(snapshot:TrainingPreviewData.snapshot,session:TrainingPreviewData.snapshot.sessions[2],
+                  cycles:[TrainingPreviewData.cycle],onUpdate:{ _,_,_,_ in
+                    if ProcessInfo.processInfo.arguments.contains("--slow-session-save") { try? await Task.sleep(for: .seconds(8)) }
+                    let failed=ProcessInfo.processInfo.arguments.contains("--failed-session-save")
+                    return .init(accepted:!failed,message:failed ? "保存できません。入力を確認してください。":"端末に保存しました・同期待ち")
+                  })
+            }
+        }
+        else if ProcessInfo.processInfo.arguments.contains("--grades") { TrainingGradesPage(snapshot:empty ? .empty:TrainingPreviewData.snapshot,date:TrainingPreviewData.date) }
         else if ProcessInfo.processInfo.arguments.contains("--session") { TrainingSessionPage(snapshot:TrainingPreviewData.snapshot,session:TrainingPreviewData.snapshot.sessions[2]) }
         else { TrainingCalendarPage(snapshot:empty ? .empty:TrainingPreviewData.snapshot,status:"架空データ · オフライン表示確認",reference:empty ? nil:TrainingPreviewData.cycle,date:TrainingPreviewData.date) }
     }.tint(pine) }

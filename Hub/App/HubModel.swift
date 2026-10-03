@@ -190,9 +190,19 @@ import PHHHubCore
             return message
         } catch { return error.localizedDescription }
     }
-    func updateTrainingSession(_ session:TrainingSession,state:TrainingLifecycle,cycle:TrainingCycleReference?,slot:TrainingPlanSlot?) async -> String {
-        guard !busy,trainingWriteEnabled,let row=try? store?.rows(table:"TrainingSessions").first(where:{$0.entityID==session.id}) else { return busy ? "同期しています。処理が終わってから保存してください。":"保存接続またはセッションを確認してください。" }
-        await queue(HubOperation(sessionID:session.id,revision:row.revision,state:state,cycle:cycle,slot:slot));return message
+    func updateTrainingSession(_ session:TrainingSession,state:TrainingLifecycle,cycle:TrainingCycleReference?,slot:TrainingPlanSlot?) async -> TrainingSessionSaveResult {
+        guard trainingWriteEnabled, let store else { return .init(accepted:false,message:"筋トレの保存接続は準備中です。") }
+        do {
+            _ = try store.enqueueTrainingSessionUpdate(sessionID:session.id,state:state,cycle:cycle,slot:slot,
+                synthetic:healthConfiguration()["RealDataEnabled"] as? Bool != true)
+        } catch { return .init(accepted:false,message:error.localizedDescription) }
+        // 保存結果は通信の完了を待たずに返します。確定値と9枠の進捗は読戻しで更新します。
+        do { try reload() } catch {
+            requestFoodSync()
+            return .init(accepted:true,message:"変更は端末に保存しました。表示を読み直せなかったため、その他の同期状態を確認してください。")
+        }
+        message = "端末に保存しました・同期待ち"; requestFoodSync()
+        return .init(accepted:true,message:message)
     }
     func reload() throws {
         guard let store else { return }
