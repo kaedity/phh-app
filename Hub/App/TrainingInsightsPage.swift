@@ -6,6 +6,8 @@ struct TrainingInsightsPage: View {
     let hub: HubStore, date: String
     @AppStorage("trainingInsights.t06.majorSeries") private var majorSeriesJSON = "{}"
     @AppStorage("trainingInsights.t06.benchDefaultInitialized") private var benchDefaultInitialized = false
+    /// スクワット・デッドリフトは通常重量の系列が1つだけなら初回に選んでおく。本人が外した後は選び直さない（10/4レビュー）。
+    @AppStorage("trainingInsights.t06.singleSeriesDefaults") private var singleSeriesDefaults = ""
     @State private var report: TrainingInsightsReport?
     @State private var message = ""
 
@@ -13,11 +15,11 @@ struct TrainingInsightsPage: View {
         HubMockPage(title: "負荷を落とす週の見直し", showNavigation: true) {
             HubMockCard {
                 Text("主要種目の推定1RMで確認").font(.headline)
-                Text("同じ系列の成功セットで、推定1RMが前回から3回続けて伸びなければ、負荷を落とす週を提案します。")
+                Text("同じ系列の記録で、推定1RMが前回から3回続けて伸びなければ、負荷を落とす週を提案します。")
                     .font(.subheadline).foregroundStyle(.secondary)
                 Text("重量や回数の変更量は未設定です。計画を確認して、ご自身で判断できます。")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("確認する日：\(date)").font(.caption).foregroundStyle(.secondary)
+                Text("確認する日：\(mockDay(date))").font(.caption).foregroundStyle(.secondary)
             }
             if let report {
                 HubMockCard {
@@ -44,7 +46,7 @@ struct TrainingInsightsPage: View {
                 }
                 HubMockCard {
                     Text("使う記録と方法").font(.headline)
-                    Text("完了セッションの、成功を明示した通常重量・1〜10回のセットから、既存のEpley式で推定します。同日の最大値を1回として比べます。")
+                    Text("完了セッションに記録した通常重量・1〜10回の全セットから、既存のEpley式で推定します。同日の最大値を1回として比べます。")
                         .font(.subheadline).foregroundStyle(.secondary)
                     Text("3回の比較には4実施日分が必要です。途中の不明値を飛ばして、離れた記録を連続させません。")
                         .font(.caption).foregroundStyle(.secondary)
@@ -79,7 +81,7 @@ struct TrainingInsightsPage: View {
                 }.accessibilityElement(children: .combine)
             }
             if !assessment.missingEvidenceDates.isEmpty {
-                Text("条件を満たす根拠がない日：\(assessment.missingEvidenceDates.joined(separator: "・"))")
+                Text("条件を満たす根拠がない日：\(assessment.missingEvidenceDates.map(mockDay).joined(separator: "・"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if assessment.isSuggested {
@@ -93,7 +95,7 @@ struct TrainingInsightsPage: View {
         case .suggested: "負荷を落とす週を検討する候補"
         case .growing: "連続停滞の条件には当たりません"
         case .insufficientHistory: "実績を蓄積中"
-        case .missingEvidence: "根拠の記録を確認してください"
+        case .missingEvidence: "推定1RMを出せない日があります"
         case .unsupportedBasis: "この系列の判定方法は未設定"
         case .unavailableSeries: "完了した実績がありません"
         }
@@ -106,6 +108,7 @@ struct TrainingInsightsPage: View {
             var values = selections
             if id.isEmpty { values.removeValue(forKey: exercise.rawValue) } else { values[exercise.rawValue] = id }
             if exercise == .bench { benchDefaultInitialized = true }
+            if !singleSeriesDefaults.contains(exercise.rawValue) { singleSeriesDefaults += exercise.rawValue + "," }
             saveSelections(values)
         })
     }
@@ -133,6 +136,13 @@ struct TrainingInsightsPage: View {
                     var values = selections; values[TrainingExercise.bench.rawValue] = candidates[0].id
                     saveSelections(values)
                 }
+            }
+            for exercise in [TrainingExercise.squat, .deadlift] where !singleSeriesDefaults.contains(exercise.rawValue) && selections[exercise.rawValue] == nil {
+                let candidates = next.availableSeries.filter { $0.exercise == exercise && $0.basis == .standard }
+                guard candidates.count == 1 else { continue }
+                singleSeriesDefaults += exercise.rawValue + ","
+                var values = selections; values[exercise.rawValue] = candidates[0].id
+                saveSelections(values)
             }
         } catch {
             report = nil; message = "記録を確認できません。前回の記録との比較は保留しています。\(error.localizedDescription)"

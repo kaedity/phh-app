@@ -5,11 +5,13 @@ import GoogleSignIn
     init() {
         #if DEBUG
         NumericHistory.resetSyntheticIfRequested()
+        AppAppearance.prepareSyntheticIfRequested()
         #endif
         let preview=ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("--p") && $0.hasSuffix("-preview") }
         HealthAppDelegate.makeRuntime = preview ? nil : { HubModel.shared.healthRuntime }
     }
     var body: some Scene { WindowGroup {
+        Group {
         #if DEBUG
         Group {
             if ProcessInfo.processInfo.arguments.contains("--p8-patterns-preview") { MotionPatternsPreviewRoot() }
@@ -24,6 +26,7 @@ import GoogleSignIn
         #else
         HubLiveRoot().toggleStyle(MotionToggleStyle())
         #endif
+        }.modifier(AppAppearanceDisplay())
     } }
 }
 private struct HubLiveRoot: View {

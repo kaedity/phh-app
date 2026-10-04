@@ -3,7 +3,7 @@ import UIKit
 import PHHHubCore
 
 let pine = Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? UIColor(red: 0.60, green: 0.82, blue: 0.70, alpha: 1) : UIColor(red: 0.13, green: 0.34, blue: 0.28, alpha: 1) })
-let canvas = Color(uiColor: UIColor { traits in traits.userInterfaceStyle == .dark ? .systemGroupedBackground : UIColor(red: 0.97, green: 0.96, blue: 0.94, alpha: 1) })
+let canvas = HubPalette.canvas
 
 struct HubRoot: View {
     let model: HubModel
@@ -30,6 +30,7 @@ struct HubRoot: View {
         // 内側のNavigationStackの戻すバーも、外側の固定タブを避けます。
         .environment(\.foodUndoBottomInset, HubMockTabBar.reservedHeight + 8)
         .tint(pine)
+        .background(canvas.ignoresSafeArea())
         .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HubMockTabBar(selection: $selectedTab, onReselect: { key in
@@ -54,7 +55,7 @@ struct Page<Content: View>: View {
 }
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
-    var body: some View { VStack(alignment: .leading, spacing: 14) { content }.frame(maxWidth: .infinity, alignment: .leading).padding(20).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).stroke(pine.opacity(0.05))) }
+    var body: some View { VStack(alignment: .leading, spacing: 14) { content }.frame(maxWidth: .infinity, alignment: .leading).padding(20).background(HubPalette.card, in: RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).stroke(pine.opacity(0.05))) }
 }
 struct AccessibleRow<Content: View>: View {
     @Environment(\.dynamicTypeSize) private var textSize
@@ -80,13 +81,15 @@ private struct SyncCard: View {
     let model: HubModel
     private var hasIssue: Bool { model.message.contains("失敗") || model.message.contains("確認できません") || model.message.contains("必要") || model.pending.contains { $0.state == .conflict || $0.state == .invalid || $0.state == .authentication } }
     var compact = false
+    /// 送信待ちが残っている間は「同期済み」と出さない（10/4レビュー）。
+    private var title: String { model.busy ? "同期しています" : hasIssue ? "同期を確認してください" : !model.pending.isEmpty ? "送信待ちがあります" : model.lastSynchronizedAt != nil ? "同期済み" : "同期状態" }
     var body: some View {
         if compact {
             HubMockCard {
                 HStack(spacing:12) {
-                    Image(systemName:hasIssue ? "exclamationmark.circle.fill" : model.lastSynchronizedAt != nil ? "checkmark.circle.fill" : "clock.circle").font(.system(size:38)).foregroundStyle(hasIssue ? Color.orange : pine)
+                    Image(systemName:hasIssue ? "exclamationmark.circle.fill" : !model.pending.isEmpty || model.lastSynchronizedAt == nil ? "clock.circle" : "checkmark.circle.fill").font(.system(size:38)).foregroundStyle(hasIssue ? Color.orange : pine)
                     VStack(alignment:.leading,spacing:5) {
-                        Text(model.busy ? "同期しています" : hasIssue ? "同期を確認してください" : model.lastSynchronizedAt != nil ? "同期済み" : "同期状態").font(.headline)
+                        Text(title).font(.headline)
                         Text("最終 " + (model.lastSynchronizedAt.map { let f=DateFormatter(); f.dateFormat="H:mm"; f.timeZone=FoodDates.calendar.timeZone; return f.string(from:$0) } ?? "—") + " · 送信待ち \(model.pending.count)件").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(); if model.busy { MotionDots() }
@@ -95,7 +98,7 @@ private struct SyncCard: View {
             }
         } else {
         Card {
-            HStack { MotionSyncSymbol(busy: model.busy, succeeded: model.message.hasPrefix("同期しました")); Text(model.busy ? "同期しています" : hasIssue ? "同期を確認してください" : model.lastSynchronizedAt != nil ? "同期済み" : "同期状態"); Spacer(); if model.busy { MotionDots() } }
+            HStack { MotionSyncSymbol(busy: model.busy, succeeded: model.message.hasPrefix("同期しました")); Text(title); Spacer(); if model.busy { MotionDots() } }
             Text("最終：" + (model.lastSynchronizedAt.map(mockDayTime) ?? "—")).font(.caption).foregroundStyle(.secondary)
             Text(model.message).font(.subheadline).foregroundStyle(.secondary).accessibilityIdentifier("sync-message")
             if !model.pending.isEmpty { Label("送信待ち \(model.pending.count)件", systemImage: "tray").font(.subheadline) }
@@ -153,11 +156,11 @@ private struct HomePage: View {
             }
             if unknown { HubUnknownNutrientsHelp() }
             if let planning=model.planningScreen {
-                NavigationLink { GoalDetailPage(model:planning,date:model.date,consumed:total.map { planningConsumed(total:$0) } ?? planningConsumed(summary:model.summary)).toolbar(.visible,for:.navigationBar) } label: { HubSettingsRow(title:"目標の内訳",subtitle:"",symbol:"scope").padding(9).background(.background,in:RoundedRectangle(cornerRadius:14)) }.buttonStyle(.plain).accessibilityLabel("目標の内訳")
+                NavigationLink { GoalDetailPage(model:planning,date:model.date,consumed:total.map { planningConsumed(total:$0) } ?? planningConsumed(summary:model.summary)).toolbar(.visible,for:.navigationBar) } label: { HubSettingsRow(accessibilityStacked:true,title:"目標の内訳",subtitle:"",symbol:"scope").padding(9).background(HubPalette.card,in:RoundedRectangle(cornerRadius:14)) }.buttonStyle(.plain).accessibilityLabel("目標の内訳")
             }
             if let health=model.healthScreen { HubHealthTiles(model:model,screen:health) }
             NavigationLink { TrainingCalendarPage(snapshot:model.trainingSnapshot,status:model.message,reference:model.trainingCycles.first,date:FoodDates.date(model.date),cycles:model.trainingCycles,saveReference:model.trainingWriteEnabled ? { await model.registerTrainingCycle($0) }:nil,updateSession:model.trainingWriteEnabled ? { await model.updateTrainingSession($0,state:$1,cycle:$2,slot:$3) }:nil).toolbar(.visible,for:.navigationBar) } label: {
-                HubMockCard { HubSettingsRow(title:cycleTitle,subtitle:elapsedTraining,symbol:"dumbbell.fill") }
+                HubMockCard { HubSettingsRow(accessibilityStacked:true,title:cycleTitle,subtitle:elapsedTraining,symbol:"dumbbell.fill") }
             }.buttonStyle(.plain).accessibilityLabel("カレンダーとCycleを見る")
             if !model.busy && !model.message.hasPrefix("同期しました") && (model.message.contains("失敗") || model.message.contains("必要") || model.message.contains("確認できません")) { Text(model.message).font(.caption).foregroundStyle(.orange) }
         }
@@ -213,6 +216,7 @@ private struct OtherPage: View {
     var body: some View {
         HubMockPage {
             SyncCard(model:model,compact:true)
+            AppAppearanceCard()
             otherSection("設定") {
                 if let planning=model.planningScreen {
                     NavigationLink { GoalDetailPage(model:planning,date:model.date,consumed:planningConsumed(summary:model.summary)).toolbar(.visible,for:.navigationBar) } label: { otherRow("目標","カロリー・PFCの目標設定","scope") }.accessibilityIdentifier("目標")
@@ -240,7 +244,7 @@ private struct OtherPage: View {
                     if let health=model.healthScreen { NavigationLink { HealthDetailPage(screen:health,autoSleep:model.autoSleepDeliveries,readEnabled:model.healthReadEnabled,readPrepared:model.healthReadPrepared,connect:{await model.connectHealth()},refresh:{await model.catchUpHealth()}) } label: { otherRow("健康データと体重","体重・睡眠・歩数・活動の記録","heart.text.clipboard") }.accessibilityIdentifier("健康データと体重") }
                     NavigationLink { TrainingCalendarPage(snapshot:model.trainingSnapshot,status:model.message,reference:model.trainingCycles.first,date:FoodDates.date(model.date),cycles:model.trainingCycles,saveReference:model.trainingWriteEnabled ? { await model.registerTrainingCycle($0) }:nil,updateSession:model.trainingWriteEnabled ? { await model.updateTrainingSession($0,state:$1,cycle:$2,slot:$3) }:nil).toolbar(.visible,for:.navigationBar) } label: { otherRow("トレーニング","カレンダーとCycle","calendar") }.accessibilityIdentifier("トレーニング")
                     NavigationLink { TrainingGradesPage(snapshot:model.trainingSnapshot,date:FoodDates.date(model.date)).toolbar(.visible,for:.navigationBar) } label: { otherRow("種目の成績","推定1RM・自己ベスト","chart.xyaxis.line",last:true) }.accessibilityIdentifier("種目の成績")
-                }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16)).padding(.top,8)
+                }.background(HubPalette.card, in: RoundedRectangle(cornerRadius: 16)).padding(.top,8)
             }.font(.subheadline.bold()).tint(pine)
             HStack { Link("アプリについて",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info")!); Spacer(); Link("プライバシー",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info/privacy")!); Link("利用条件",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info/terms")!) }.font(.caption2).foregroundStyle(.secondary).padding(.top,8)
         }.buttonStyle(.plain)
@@ -249,7 +253,7 @@ private struct OtherPage: View {
     private func otherSection<C: View>(_ title: String, @ViewBuilder _ rows: () -> C) -> some View {
         VStack(alignment:.leading,spacing:8) {
             Text(title).font(.footnote.bold()).foregroundStyle(.secondary).padding(.leading,4)
-            VStack(spacing:0) { rows() }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+            VStack(spacing:0) { rows() }.background(HubPalette.card, in: RoundedRectangle(cornerRadius: 16))
         }
     }
     private func otherRow(_ title: String, _ subtitle: String, _ symbol: String, last: Bool = false) -> some View {

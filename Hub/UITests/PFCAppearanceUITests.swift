@@ -2,9 +2,8 @@ import XCTest
 import UIKit
 
 @MainActor final class PFCAppearanceUITests: XCTestCase {
-    func testLiveSystemAppearanceNormalRoot() throws {
-        // Requires a coordinated external system-setting change. Ordinary --ui
-        // runs must not wait for an operator or alter another task's Simulator.
+    func testSavedAppearanceIgnoresLiveSystemChangesNormalRoot() throws {
+        // 外部の外観操作は専用Simulatorで調整して実行する。通常の--uiでは待たない。
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PHH_EXPECT_EXTERNAL_APPEARANCE_SWITCH"] == "1")
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PHH_ISOLATED_NORMAL_ROOT"] == "1")
         continueAfterFailure = false
@@ -12,16 +11,22 @@ import UIKit
         app.launchArguments = []
         app.launch()
         XCTAssertTrue(waitForHome(app))
+        app.buttons["hub-tab-other"].tap()
+        app.buttons["ライトモード"].tap()
+        app.buttons["hub-tab-home"].tap()
         XCTAssertGreaterThan(backgroundBrightness(app), 0.8)
-        attach(app, "live-normal-light")
         print("PHH_LIVE_READY_DARK")
-        let dark = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in MainActor.assumeIsolated { self.backgroundBrightness(app) < 0.1 } }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [dark], timeout: 90), .completed)
-        attach(app, "live-normal-dark")
+        Thread.sleep(forTimeInterval: 20)
+        XCTAssertGreaterThan(backgroundBrightness(app), 0.8)
+        attach(app, "app-light-system-dark")
+        app.buttons["hub-tab-other"].tap()
+        app.buttons["ダークモード"].tap()
+        app.buttons["hub-tab-home"].tap()
+        XCTAssertLessThan(backgroundBrightness(app), 0.2)
         print("PHH_LIVE_READY_LIGHT")
-        let light = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in MainActor.assumeIsolated { self.backgroundBrightness(app) > 0.8 } }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [light], timeout: 90), .completed)
-        attach(app, "live-normal-light-returned")
+        Thread.sleep(forTimeInterval: 20)
+        XCTAssertLessThan(backgroundBrightness(app), 0.2)
+        attach(app, "app-dark-system-light")
     }
 
     private func waitForHome(_ app: XCUIApplication) -> Bool {
@@ -115,7 +120,7 @@ import UIKit
     func testSystemAppearanceGoalAndEditor() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        // No --light/--dark override: use the Simulator's system appearance.
+        // No --light/--dark override: use the saved app appearance (initially dark).
         app.launchArguments = ["--p5-preview", "--goal"]
         app.launch()
         XCTAssertTrue(app.staticTexts["1日の目標摂取カロリー"].waitForExistence(timeout: 15))

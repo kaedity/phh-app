@@ -57,7 +57,7 @@ struct MockFigure: View {
 struct MockRows<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
-        VStack(spacing: 0) { content }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        VStack(spacing: 0) { content }.background(HubPalette.card, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 struct MockRow<Trailing: View>: View {
@@ -416,7 +416,7 @@ struct TrainingGradesPage: View {
         let points = selected?.points(metric) ?? []
         let bests = full?.personalBestIDs(metric) ?? []
         Page(title:"種目の成績") {
-            LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],spacing:8) { ForEach(TrainingExercise.allCases) { item in Button { exercise=item;seriesID="";selectedPoint=nil } label: { Text(item.rawValue).font(.subheadline.bold()).frame(maxWidth:.infinity,minHeight:44).background(exercise==item ? pine:Color(uiColor:.secondarySystemGroupedBackground),in:RoundedRectangle(cornerRadius:12)).foregroundStyle(exercise==item ? Color(uiColor:.systemBackground):Color.primary) }.buttonStyle(.plain) } }
+            LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],spacing:8) { ForEach(TrainingExercise.allCases) { item in Button { exercise=item;seriesID="";selectedPoint=nil } label: { Text(item.rawValue).font(.subheadline.bold()).frame(maxWidth:.infinity,minHeight:44).background(exercise==item ? pine:HubPalette.card,in:RoundedRectangle(cornerRadius:12)).foregroundStyle(exercise==item ? Color(uiColor:.systemBackground):Color.primary) }.buttonStyle(.plain) } }
             if series.count>1 { Picker("系列",selection:$seriesID) { ForEach(series) { Text(seriesLabel($0)).tag($0.id) } }.pickerStyle(.menu).onAppear { seriesID=series.first?.id ?? "" } }
             if let last=points.last {
                 VStack(spacing:4) {
@@ -432,11 +432,11 @@ struct TrainingGradesPage: View {
             MotionSegments(title: "指標", selection: $metric, options: metricOptions(full?.basis ?? .standard))
             Menu { Button("回数") { metric = .reps }; Button("RPE") { metric = .rpe } } label: { Text([.reps,.rpe].contains(metric) ? "表示中：\(metric.rawValue)" : "ほかの指標（回数・RPE）").font(.caption) }
             Card {
-                if points.isEmpty { ContentUnavailableView("この指標の記録はありません",systemImage:"chart.xyaxis.line",description:Text(metric == .measuredOneRM ? "最大試技・成功を明示した1回だけを表示します。":"欠測を0で埋めず、報告された値だけを表示します。")) }
+                if points.isEmpty { ContentUnavailableView("この指標の記録はありません",systemImage:"chart.xyaxis.line",description:Text(metric == .measuredOneRM ? "最大試技として記録した1回だけを表示します。":"欠測を0で埋めず、報告された値だけを表示します。")) }
                 else { Chart(points) { point in
                     LineMark(x:.value("日付",TrainingDates.date(point.date)),y:.value(metric.rawValue,point.value)).foregroundStyle(pine)
                     PointMark(x:.value("日付",TrainingDates.date(point.date)),y:.value(metric.rawValue,point.value)).foregroundStyle(bests.contains(point.id) ? prGold:pine).symbolSize(bests.contains(point.id) ? 110:40)
-                }.frame(height:210).modifier(MotionChartReveal(key: String(period) + metric.rawValue)).chartXAxis { AxisMarks(values:.automatic(desiredCount:4)) { value in AxisValueLabel { if let date=value.as(Date.self) { Text(TrainingDates.string(date,format:"M/d")) } };AxisGridLine() } }.chartYScale(domain:.automatic(includesZero:false)).chartYAxisLabel([.weight,.measuredOneRM,.estimatedOneRM].contains(metric) ? "kg":metric.rawValue).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                }.frame(height:210).modifier(MotionChartReveal(key: String(period) + metric.rawValue)).chartXAxis { AxisMarks(values:.automatic(desiredCount:4)) { value in AxisValueLabel { if let date=value.as(Date.self) { Text(TrainingDates.string(date,format:"M/d")) } };AxisGridLine() } }.chartXScale(range:.plotDimension(padding:14)).chartYScale(domain:.automatic(includesZero:false),range:.plotDimension(padding:14)).chartYAxisLabel([.weight,.measuredOneRM,.estimatedOneRM].contains(metric) ? "kg":metric.rawValue).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .chartXSelection(value:$chartDate)
                     .chartGesture { proxy in
                         SpatialTapGesture().onEnded { value in proxy.selectXValue(at:value.location.x) }

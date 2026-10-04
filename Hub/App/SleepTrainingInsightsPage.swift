@@ -99,7 +99,7 @@ struct SleepTrainingInsightsPage: View {
             } else { Text("睡眠区間の選択待ち").font(.subheadline).foregroundStyle(.secondary) }
             if let point = comparison.performance {
                 Text("当日の推定1RM：\(point.value.formatted()) kg").font(.title3.bold()).foregroundStyle(pine)
-                Text("根拠：\(point.set.weightLabel) × \(point.set.reps)回（セット\(point.set.number)・成功報告あり）")
+                Text("根拠：\(point.set.weightLabel) × \(point.set.reps)回（セット\(point.set.number)）")
                     .font(.caption).foregroundStyle(.secondary)
             } else { Text("成績の根拠が不足しています。").font(.subheadline).foregroundStyle(.secondary) }
             ForEach(comparison.issues, id: \.rawValue) { issue in Text(issue.title).font(.caption).foregroundStyle(.secondary) }

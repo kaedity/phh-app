@@ -17,14 +17,9 @@ import Testing
         }
         return try .init(sessions: sessions, sets: sets, notes: [])
     }
-    private func success(_ snapshot: TrainingSnapshot) -> [String: Bool] {
-        Dictionary(uniqueKeysWithValues: snapshot.sets.map { ($0.id, true) })
-    }
-    private func report(_ snapshot: TrainingSnapshot, successes: [String: Bool]? = nil,
-                        asOf: String = "2026-10-10") throws -> TrainingInsightsReport {
+    private func report(_ snapshot: TrainingSnapshot, asOf: String = "2026-10-10") throws -> TrainingInsightsReport {
         let series = try #require(snapshot.series(for: .bench).first)
-        return try TrainingInsights.evaluate(snapshot: snapshot, asOf: asOf, majorSeries: [.bench: series.id],
-                                              successfulBySetID: successes ?? success(snapshot))
+        return try TrainingInsights.evaluate(snapshot: snapshot, asOf: asOf, majorSeries: [.bench: series.id])
     }
 
     @Test func threeConsecutiveComparisonsNeedFourCompletedDatesAndShowEvidence() throws {
@@ -50,13 +45,8 @@ import Testing
         #expect(oldGrowth.assessments.first?.referenceDates.first == "2026-10-02")
     }
 
-    @Test func missingSuccessAndAnIneligibleMiddleDateDoNotGetSkipped() throws {
+    @Test func anIneligibleMiddleDateDoesNotGetSkipped() throws {
         let source = try snapshot([70, 70, 70, 70, 70])
-        var successes = success(source); successes.removeValue(forKey: source.sets[2].id)
-        let missing = try report(source, successes: successes)
-        #expect(missing.assessments.first?.state == .missingEvidence)
-        #expect(missing.assessments.first?.missingEvidenceDates == ["2026-10-03"])
-        #expect(missing.assessments.first?.referenceDates.count == 4)
         var sets = source.sets
         sets[2] = try .init(id: sets[2].id, sessionID: sets[2].sessionID, exercise: sets[2].exercise,
                             number: 1, weight: 70, reps: 11, equipment: sets[2].equipment, variant: sets[2].variant)
@@ -64,21 +54,16 @@ import Testing
         let ineligible = try report(manyReps)
         #expect(ineligible.assessments.first?.state == .missingEvidence)
         #expect(ineligible.assessments.first?.missingEvidenceDates == ["2026-10-03"])
+        #expect(ineligible.assessments.first?.referenceDates.count == 4)
     }
 
-    @Test func explicitFailureDoesNotInflateDailyOneRMAndUnknownComparableSetBlocks() throws {
+    @Test func everySetOfTheDayCountsWithoutASuccessFlag() throws {
         let source = try snapshot([70, 70, 70, 70])
-        let failed = try TrainingSet(id: base.id(990), sessionID: source.sessions.last!.id, exercise: "ベンチプレス",
-                                     number: 2, weight: 120, reps: 2, equipment: "fictional-bar", variant: "タッチアンドゴー")
-        let withFailure = try TrainingSnapshot(sessions: source.sessions, sets: source.sets + [failed], notes: [])
-        var successes = success(source); successes[failed.id] = false
-        let result = try report(withFailure, successes: successes)
-        #expect(result.assessments.first?.state == .suggested)
-        #expect(result.assessments.first?.observations.last?.set.weight == 70)
-        successes.removeValue(forKey: failed.id)
-        let unknown = try report(withFailure, successes: successes)
-        #expect(unknown.assessments.first?.state == .missingEvidence)
-        #expect(unknown.assessments.first?.missingEvidenceDates == ["2026-10-04"])
+        let heavy = try TrainingSet(id: base.id(990), sessionID: source.sessions.last!.id, exercise: "ベンチプレス",
+                                    number: 2, weight: 120, reps: 2, equipment: "fictional-bar", variant: "タッチアンドゴー")
+        let result = try report(TrainingSnapshot(sessions: source.sessions, sets: source.sets + [heavy], notes: []))
+        #expect(result.assessments.first?.state == .growing)
+        #expect(result.assessments.first?.observations.last?.set.id == heavy.id)
     }
 
     @Test func equipmentAndTechniqueSeriesRemainSeparateAndRequireSelection() throws {
@@ -95,11 +80,11 @@ import Testing
         let mixed = try TrainingSnapshot(sessions: main.sessions, sets: added, notes: [])
         let primaryID = try #require(main.series(for: .bench).first).id
         let result = try TrainingInsights.evaluate(snapshot: mixed, asOf: "2026-10-10",
-                                                    majorSeries: [.bench: primaryID], successfulBySetID: success(mixed))
+                                                    majorSeries: [.bench: primaryID])
         #expect(result.availableSeries.filter { $0.exercise == .bench }.count == 3)
         #expect(result.assessments.first?.state == .suggested)
         #expect(result.assessments.first?.observations.allSatisfy { $0.set.variant == "タッチアンドゴー" && $0.set.equipment == "fictional-bar" } == true)
-        let unselected = try TrainingInsights.evaluate(snapshot: mixed, asOf: "2026-10-10", majorSeries: [:], successfulBySetID: success(mixed))
+        let unselected = try TrainingInsights.evaluate(snapshot: mixed, asOf: "2026-10-10", majorSeries: [:])
         #expect(unselected.assessments.isEmpty)
         #expect(unselected.unselectedExercises.contains(.bench))
     }
@@ -131,19 +116,16 @@ import Testing
     @Test func pullupAndAssistedWeightDoNotUseBigThreeOneRM() throws {
         let pullup = try snapshot([10, 10, 10, 10], exercise: "懸垂", basis: .added)
         let id = try #require(pullup.series(for: .pullup).first).id
-        let result = try TrainingInsights.evaluate(snapshot: pullup, asOf: "2026-10-10", majorSeries: [.pullup: id], successfulBySetID: success(pullup))
+        let result = try TrainingInsights.evaluate(snapshot: pullup, asOf: "2026-10-10", majorSeries: [.pullup: id])
         #expect(result.assessments.first?.state == .unsupportedBasis)
         let assisted = try report(snapshot([70, 70, 70, 70], basis: .assisted))
         #expect(assisted.assessments.first?.state == .unsupportedBasis)
     }
 
-    @Test func invalidDatesAndUnrelatedSuccessIDsReject() throws {
+    @Test func invalidDatesReject() throws {
         let source = try snapshot([70, 70, 70, 70]), id = try #require(source.series(for: .bench).first).id
         #expect(throws: HubError.invalidResponse) {
-            try TrainingInsights.evaluate(snapshot: source, asOf: "2026-02-30", majorSeries: [.bench: id], successfulBySetID: success(source))
-        }
-        #expect(throws: HubError.invalidResponse) {
-            try TrainingInsights.evaluate(snapshot: source, asOf: "2026-10-10", majorSeries: [.bench: id], successfulBySetID: [base.id(999): true])
+            try TrainingInsights.evaluate(snapshot: source, asOf: "2026-02-30", majorSeries: [.bench: id])
         }
     }
 }

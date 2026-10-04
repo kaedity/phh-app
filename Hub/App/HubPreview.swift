@@ -6,9 +6,8 @@ struct PreviewDisplay: ViewModifier {
     func body(content: Content) -> some View {
         let args = ProcessInfo.processInfo.arguments
         let reduction = args.contains("--reduce-motion")
-        let scheme: ColorScheme? = args.contains("--dark") ? .dark : args.contains("--light") ? .light : nil
-        if args.contains("--ax5") { content.preferredColorScheme(scheme).environment(\.dynamicTypeSize, .accessibility5).environment(\.motionReductionOverride, reduction) }
-        else { content.preferredColorScheme(scheme).environment(\.motionReductionOverride, reduction) }
+        if args.contains("--ax5") { content.environment(\.dynamicTypeSize, .accessibility5).environment(\.motionReductionOverride, reduction) }
+        else { content.environment(\.motionReductionOverride, reduction) }
     }
 }
 

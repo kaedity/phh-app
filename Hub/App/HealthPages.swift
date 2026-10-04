@@ -107,7 +107,7 @@ struct HealthWeightPage: View {
                         ForEach(averagePoints, id: \.date) { avg in
                             LineMark(x: .value("日付", FoodDates.date(avg.date)), y: .value("7日平均", avg.value), series: .value("系列", "7日平均")).foregroundStyle(pfcFat.opacity(0.85)).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
                         }
-                    }.chartYScale(domain: .automatic(includesZero: false)).chartYAxisLabel("kg").chartXSelection(value: $selectedDate).dynamicTypeSize(...DynamicTypeSize.xxxLarge).frame(height: 200).modifier(MotionChartReveal(key: String(period)))
+                    }.chartXScale(range: .plotDimension(padding: 14)).chartYScale(domain: .automatic(includesZero: false), range: .plotDimension(padding: 14)).chartYAxisLabel("kg").chartXSelection(value: $selectedDate).dynamicTypeSize(...DynamicTypeSize.xxxLarge).frame(height: 200).modifier(MotionChartReveal(key: String(period)))
                     if let selectedDate, let nearest = points.min(by: { abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate)) }) {
                         Text("\(mockDay(nearest.day.date)) · \(weightText(nearest.day.value)) kg · 範囲 \(weightText(nearest.day.minimum))–\(weightText(nearest.day.maximum)) kg").font(.caption)
                     }

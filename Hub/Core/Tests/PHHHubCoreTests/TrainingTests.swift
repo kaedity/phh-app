@@ -5,7 +5,7 @@ import Testing
 struct TrainingTests {
     func id(_ n: Int) -> String { String(format:"00000000-0000-4000-a000-%012d",n) }
     func session(_ n: Int, date: String = "2026-10-01", name: String = "Push", state: TrainingLifecycle = .inProgress, cycle: String? = nil, slot: String? = nil) throws -> TrainingSession { try .init(id:id(n),date:date,name:name,lifecycle:state,cycleID:cycle,slotID:slot) }
-    func set(_ n: Int, session: Int, exercise: String = "ベンチプレス", weight: Double = 50, reps: Int = 8, basis: TrainingWeightBasis = .standard, equipment: String? = nil, max: Bool = false) throws -> TrainingSet { try .init(id:id(n),sessionID:id(session),exercise:exercise,number:n,weight:weight,reps:reps,basis:basis,equipment:equipment,explicitSuccessfulMaxAttempt:max) }
+    func set(_ n: Int, session: Int, exercise: String = "ベンチプレス", weight: Double = 50, reps: Int = 8, basis: TrainingWeightBasis = .standard, equipment: String? = nil, max: Bool = false) throws -> TrainingSet { try .init(id:id(n),sessionID:id(session),exercise:exercise,number:n,weight:weight,reps:reps,basis:basis,equipment:equipment,maxAttempt:max) }
     func plan() throws -> TrainingCycleReference { try .init(id:id(99),name:"架空Cycle",sourcePath:"synthetic-plan.md",markdown:Data((1...9).map { "## \($0). Session \($0) \(["Pull-A","Push-R/T","Leg-2"][($0-1)%3])" }.joined(separator:"\n").utf8)) }
     @Test func twoTypesAndRepeatedSameTypeAreSeparateSessionsNotThreeDays() throws {
         let ss = try [session(1),session(2,name:"Pull"),session(3,name:"Push2"),session(4,date:"2026-10-02",name:"Leg"),session(5,date:"2026-10-03")]
@@ -165,16 +165,14 @@ struct TrainingEstimateTests {
 
 struct TrainingReviewFixTests {
     let base = TrainingTests()
-    @Test func failedSetsNeverBecomeEstimatesBestsOrRaiseTheTarget() throws {
+    /// 成功・失敗の区別はない（10/4本人決定）。疲労で回数が落ちたセットもそのまま数え、目安は回数で決める。
+    @Test func everyRecordedSetCountsAndFewerRepsKeepTheTarget() throws {
         let ss = try [base.session(1,date:"2026-10-01"),base.session(2,date:"2026-10-03")]
-        let ok = try base.set(11,session:1,weight:60,reps:8)
-        let failed = try base.set(12,session:2,weight:100,reps:3).with(successful:false)
-        let snapshot = try TrainingSnapshot(sessions:ss,sets:[ok,failed],notes:[]), series = snapshot.series(for:.bench)[0]
-        #expect(failed.estimatedOneRM == nil)
-        #expect(series.points(.estimatedOneRM).map(\.id) == [ok.id]); #expect(series.personalBestIDs(.estimatedOneRM).isEmpty)
-        #expect(series.points(.reps).count == 2)
-        let target = try TrainingSnapshot(sessions:ss,sets:[try base.set(13,session:2,weight:60,reps:8),try base.set(14,session:2,weight:60,reps:8).with(successful:false)],notes:[]).series(for:.bench)[0].nextTarget()
-        #expect(target?.raise == false)
+        let first = try base.set(11,session:1,weight:60,reps:8), heavy = try base.set(12,session:2,weight:100,reps:3)
+        let series = try TrainingSnapshot(sessions:ss,sets:[first,heavy],notes:[]).series(for:.bench)[0]
+        #expect(series.points(.estimatedOneRM).map(\.id) == [first.id, heavy.id]); #expect(series.personalBestIDs(.estimatedOneRM) == [heavy.id])
+        let target = try TrainingSnapshot(sessions:ss,sets:[try base.set(13,session:2,weight:60,reps:8),try base.set(14,session:2,weight:60,reps:6)],notes:[]).series(for:.bench)[0].nextTarget()
+        #expect(target?.raise == false); #expect(target?.reps == 8)
     }
     @Test func assistedPullupsNeverBecomePersonalBests() throws {
         let ss = try [base.session(1,date:"2026-10-01",name:"Pull"),base.session(2,date:"2026-10-03",name:"Pull")]

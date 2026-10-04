@@ -28,19 +28,17 @@ public struct TrainingSet: Identifiable, Equatable, Sendable {
     public let id: String, sessionID: String, exercise: String
     public let number: Int, weight: Double, reps: Int, rpe: Double?, rir: Int?
     public let basis: TrainingWeightBasis, equipment: String?, variant: String?, occurredAt: String?
-    public let explicitSuccessfulMaxAttempt: Bool
-    /// 本人が報告した成否。nilは未報告（成功として扱う）、falseだけを成績の計算から外す。
-    public var successful: Bool? = nil
-    public init(id: String, sessionID: String, exercise: String, number: Int, weight: Double, reps: Int, rpe: Double? = nil, rir: Int? = nil, basis: TrainingWeightBasis = .standard, equipment: String? = nil, variant: String? = nil, occurredAt: String? = nil, explicitSuccessfulMaxAttempt: Bool = false) throws {
+    /// 筋トレに成功・失敗の区別はない（10/4本人決定）。フォームの乱れや疲労で落ちた回数も記録どおり数える。
+    public let maxAttempt: Bool
+    public init(id: String, sessionID: String, exercise: String, number: Int, weight: Double, reps: Int, rpe: Double? = nil, rir: Int? = nil, basis: TrainingWeightBasis = .standard, equipment: String? = nil, variant: String? = nil, occurredAt: String? = nil, maxAttempt: Bool = false) throws {
         guard UUID(uuidString: id) != nil, UUID(uuidString: sessionID) != nil, !exercise.isEmpty, number > 0, weight.isFinite, weight >= 0, reps >= 0, rpe.map({ $0.isFinite && (0...10).contains($0) }) ?? true, rir.map({ $0 >= 0 }) ?? true else { throw HubError.invalidResponse }
-        self.id = id; self.sessionID = sessionID; self.exercise = exercise; self.number = number; self.weight = weight; self.reps = reps; self.rpe = rpe; self.rir = rir; self.basis = basis; self.equipment = equipment; self.variant = variant; self.occurredAt = occurredAt; self.explicitSuccessfulMaxAttempt = explicitSuccessfulMaxAttempt
+        self.id = id; self.sessionID = sessionID; self.exercise = exercise; self.number = number; self.weight = weight; self.reps = reps; self.rpe = rpe; self.rir = rir; self.basis = basis; self.equipment = equipment; self.variant = variant; self.occurredAt = occurredAt; self.maxAttempt = maxAttempt
     }
-    func with(successful: Bool?) -> TrainingSet { var copy = self; copy.successful = successful; return copy }
     public var weightLabel: String { switch basis { case .bodyweight: "自重"; case .added: "加重 +\(weight.formatted()) kg"; case .assisted: "補助 \(weight.formatted()) kg"; case .standard: "\(weight.formatted()) kg" } }
-    public var measuredOneRM: Double? { explicitSuccessfulMaxAttempt && reps == 1 && basis == .standard ? weight : nil }
+    public var measuredOneRM: Double? { maxAttempt && reps == 1 && basis == .standard ? weight : nil }
     /// Epley式（方式版 `epley-v1`、10/3本人決定）。通常重量の1〜10回のセットだけ。1回は重量そのもの。
     public var estimatedOneRM: Double? {
-        guard basis == .standard, weight > 0, (1...10).contains(reps), successful != false else { return nil }
+        guard basis == .standard, weight > 0, (1...10).contains(reps) else { return nil }
         return reps == 1 ? weight : (weight * (1 + Double(reps) / 30) * 10).rounded() / 10
     }
 }
@@ -72,8 +70,7 @@ public struct TrainingSnapshot: Sendable {
         let sets = try active.filter { $0.table == "TrainingSets" }.map { r in
             guard let weight = r.values["weight_kg"]?.number, let basis = TrainingWeightBasis(rawValue: try text(r, "weight_basis")) else { throw HubError.invalidResponse }
             let rir = r.values["rir"]?.number == nil ? nil : try integer(r, "rir")
-            return try TrainingSet(id: r.entityID, sessionID: text(r, "session_id"), exercise: text(r, "exercise"), number: integer(r, "set_no"), weight: weight, reps: integer(r, "reps"), rpe: r.values["rpe"]?.number, rir: rir, basis: basis, equipment: r.values["equipment_key"]?.text, variant: r.values["variant"]?.text, occurredAt: r.values["occurred_at"]?.text, explicitSuccessfulMaxAttempt: r.values["max_attempt"] == .bool(true) && r.values["successful"] == .bool(true))
-            .with(successful: r.values["successful"] == .bool(true) ? true : r.values["successful"] == .bool(false) ? false : nil)
+            return try TrainingSet(id: r.entityID, sessionID: text(r, "session_id"), exercise: text(r, "exercise"), number: integer(r, "set_no"), weight: weight, reps: integer(r, "reps"), rpe: r.values["rpe"]?.number, rir: rir, basis: basis, equipment: r.values["equipment_key"]?.text, variant: r.values["variant"]?.text, occurredAt: r.values["occurred_at"]?.text, maxAttempt: r.values["max_attempt"] == .bool(true))
         }
         let notes = try active.filter { $0.table == "TrainingNotes" }.map { r in
             try TrainingNote(id: r.entityID, sessionID: text(r,"session_id"), category: text(r,"category"), speaker: text(r,"speaker"), text: text(r,"text"), exercise: r.values["exercise"]?.text, setNumber: r.values["set_no"]?.number == nil ? nil : integer(r,"set_no"))
@@ -108,7 +105,7 @@ public struct TrainingSeries: Identifiable, Sendable {
         return Self(id:id,basis:basis,sets:filtered,dates:dates.filter { ids.contains($0.key) })
     }
     public func points(_ metric: TrainingMetric) -> [TrainingPoint] {
-        let eligible = sets.filter { !(metric != .reps && metric != .rpe && $0.successful == false) }.compactMap { set -> TrainingPoint? in
+        let eligible = sets.compactMap { set -> TrainingPoint? in
             let value: Double? = switch metric { case .weight: basis == .bodyweight ? nil : set.weight; case .reps: Double(set.reps); case .rpe: set.rpe; case .measuredOneRM: set.measuredOneRM; case .estimatedOneRM: set.estimatedOneRM }
             guard let value, let date = dates[set.id] else { return nil }; return TrainingPoint(id:set.id,date:date,value:value,set:set)
         }
@@ -129,7 +126,7 @@ public struct TrainingSeries: Identifiable, Sendable {
         guard let top = day.map(\.weight).max() else { return nil }
         let topSets = day.filter { $0.weight == top }, goal = topSets.map(\.reps).max()!
         let reps = topSets.map { String($0.reps) }.joined(separator: "・"), w = top.formatted()
-        if topSets.count >= 2 && topSets.allSatisfy({ $0.reps >= goal && $0.successful != false }) {
+        if topSets.count >= 2 && topSets.allSatisfy({ $0.reps >= goal }) {
             return .init(weight: top + increment, reps: goal, raise: true, reason: "前回（\(TrainingNextTarget.short(last))）は\(w)kgの全\(topSets.count)セットで\(goal)回に届きました。")
         }
         return .init(weight: top, reps: goal, raise: false, reason: "前回（\(TrainingNextTarget.short(last))）は\(w)kgで\(reps)回。まず全セット\(goal)回を目標にします。")

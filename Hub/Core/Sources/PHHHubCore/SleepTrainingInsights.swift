@@ -49,14 +49,13 @@ public struct SleepTrainingHealthWindow: Identifiable, Sendable {
     public let start: Date, end: Date
 }
 public enum SleepTrainingIssue: String, Equatable, Sendable {
-    case sleepMissing, sleepDurationMissing, mainSleepUnconfirmed, successUnreported, performanceMissing
+    case sleepMissing, sleepDurationMissing, mainSleepUnconfirmed, performanceMissing
     case sleepAfterTraining, trainingTimeUnreported
     public var title: String {
         switch self {
         case .sleepMissing: "前夜の区間が未選択"
         case .sleepDurationMissing: "実睡眠時間が不明"
         case .mainSleepUnconfirmed: "主睡眠・昼寝の分類は未確認"
-        case .successUnreported: "セットの成功が未報告"
         case .performanceMissing: "対象の推定1RMがない"
         case .sleepAfterTraining: "睡眠がトレーニング開始後に終了"
         case .trainingTimeUnreported: "開始時刻が未報告・前後関係は未確認"
@@ -99,38 +98,31 @@ public enum SleepTrainingInsights {
         }.sorted { ($0.wakeDate, $0.start, $0.id) > ($1.wakeDate, $1.start, $1.id) }
     }
 
-    public static func evaluate(snapshot: TrainingSnapshot, successfulBySetID: [String: Bool],
+    public static func evaluate(snapshot: TrainingSnapshot,
                                 asOf: String, from: String? = nil, majorSeries: [TrainingExercise: String],
                                 sleepNights: [SleepTrainingNight], sleepSourceID: String?) throws -> SleepTrainingInsightsReport {
-        guard Schema.validDate(asOf), from.map({ Schema.validDate($0) && $0 <= asOf }) ?? true,
-              Set(successfulBySetID.keys).isSubset(of: Set(snapshot.sets.map(\.id)))
+        guard Schema.validDate(asOf), from.map({ Schema.validDate($0) && $0 <= asOf }) ?? true
         else { throw SleepTrainingFailure.invalidValue }
         let selectedNights = sleepNights.filter { $0.sourceID == sleepSourceID }
         guard Set(selectedNights.map(\.wakeDate)).count == selectedNights.count else { throw SleepTrainingFailure.duplicateNight }
         let nights = Dictionary(uniqueKeysWithValues: selectedNights.map { ($0.wakeDate, $0) })
         let available = try TrainingInsights.evaluate(snapshot: snapshot, asOf: asOf,
-                                                       majorSeries: majorSeries, successfulBySetID: successfulBySetID).availableSeries
+                                                       majorSeries: majorSeries).availableSeries
         let completedSessions = snapshot.sessions.filter { session in
             session.lifecycle == .completed && session.date <= asOf && (from.map { session.date >= $0 } ?? true)
         }
         let completedIDs = Set(completedSessions.map(\.id))
         let completed = try TrainingSnapshot(sessions: completedSessions,
                                              sets: snapshot.sets.filter { completedIDs.contains($0.sessionID) }, notes: [])
-        let successful = try TrainingSnapshot(sessions: completedSessions,
-                                              sets: completed.sets.filter { successfulBySetID[$0.id] == true }, notes: [])
         var comparisons: [SleepTrainingComparison] = []
         for exercise in TrainingExercise.allCases {
             guard let id = majorSeries[exercise], let original = completed.series(for: exercise).first(where: { $0.id == id }) else { continue }
             let points = original.basis == .standard && exercise != .pullup
-                ? successful.series(for: exercise).first { $0.id == id }?.points(.estimatedOneRM) ?? [] : []
+                ? original.points(.estimatedOneRM) : []
             let byDate = Dictionary(uniqueKeysWithValues: points.map { ($0.date, $0) })
             for day in Set(original.dates.values).sorted() {
                 var issues: [SleepTrainingIssue] = []
-                let unreported = original.sets.contains {
-                    original.dates[$0.id] == day && $0.estimatedOneRM != nil && successfulBySetID[$0.id] == nil
-                }
-                let point = unreported ? nil : byDate[day]
-                if unreported { issues.append(.successUnreported) }
+                let point = byDate[day]
                 if point == nil { issues.append(.performanceMissing) }
                 let night = nights[day]
                 if let night {
@@ -158,10 +150,7 @@ public enum SleepTrainingInsights {
                                 sleepSourceID: String?) throws -> SleepTrainingInsightsReport {
         let trainingRows = rows.filter { ["TrainingSessions", "TrainingSets", "TrainingNotes"].contains($0.table) }
         let snapshot = try TrainingSnapshot(rows: trainingRows)
-        let successes = trainingRows.filter { $0.active && $0.table == "TrainingSets" }.reduce(into: [String: Bool]()) { result, row in
-            if case .bool(let value)? = row.values["successful"] { result[row.entityID] = value }
-        }
-        return try evaluate(snapshot: snapshot, successfulBySetID: successes, asOf: asOf, from: from,
+        return try evaluate(snapshot: snapshot, asOf: asOf, from: from,
                             majorSeries: majorSeries, sleepNights: sleepNights, sleepSourceID: sleepSourceID)
     }
     private static func instant(_ value: String) -> Date? {

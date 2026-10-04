@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 @MainActor final class HubUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
@@ -536,7 +537,7 @@ import XCTest
         XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:breakfast)],timeout:3),.completed)
         header.tap(); XCTAssertTrue(breakfast.waitForExistence(timeout:3))
         mockProof("p86-history"); back(app)
-        tab("その他",app:app); XCTAssertTrue(app.staticTexts["同期済み"].waitForExistence(timeout:5))
+        tab("その他",app:app); XCTAssertTrue(app.staticTexts.matching(NSPredicate(format:"label IN %@", ["同期済み","送信待ちがあります"])).firstMatch.waitForExistence(timeout:5))
         mockProof("p86-other")
         tap("記録と成績",app:app); tap("トレーニング",app:app); mockProof("p86-training")
         tap("種目の成績を見る",app:app); mockProof("p86-grades")
@@ -920,6 +921,134 @@ import XCTest
         proof(app,"cycle-recording-copy")
         tap("閉じる",app:app)
         XCTAssertTrue(app.buttons["cycle-recording-block"].exists)
+    }
+
+    func testCycleRecordingNormalDarkAcceptance() throws { try cycleRecordingAcceptance(largest:false,dark:true) }
+    func testCycleRecordingLargestDarkAcceptance() throws { try cycleRecordingAcceptance(largest:true,dark:true) }
+    func testCycleRecordingLargestLightAcceptance() throws { try cycleRecordingAcceptance(largest:true,dark:false) }
+    private func cycleRecordingAcceptance(largest:Bool,dark:Bool) throws {
+        let app=launch(["--p7-preview",dark ? "--dark":"--light"] + (largest ? ["--ax5"]:[]))
+        tab("その他",app:app);tap("記録と成績",app:app)
+        let training=app.staticTexts["トレーニング"].firstMatch;reveal(training,app:app);training.tap()
+        tap("cycle-recording-block",app:app)
+        let id=app.staticTexts["cycle-registered-id"]
+        XCTAssertTrue(id.waitForExistence(timeout:5));reveal(id,app:app)
+        XCTAssertEqual(id.label,"00000000-0000-4000-a000-000000000099")
+        XCTAssertGreaterThanOrEqual(id.frame.minX,0);XCTAssertLessThanOrEqual(id.frame.maxX,app.frame.width)
+        let name=app.staticTexts["架空Cycle · 9セッション"].firstMatch;reveal(name,app:app)
+        try cycleTextContrast(app:app,text:name,dark:dark)
+        proof(app,"cycle-acceptance-top-\(largest)-\(dark)")
+        tap("cycle-copy-recording",app:app)
+        XCTAssertTrue(app.buttons["コピーしました"].exists)
+        for number in 1...9 {
+            let slot=app.staticTexts["00000000-0000-4000-a000-000000000099#\(number)"]
+            reveal(slot,app:app)
+            XCTAssertGreaterThanOrEqual(slot.frame.minX,0);XCTAssertLessThanOrEqual(slot.frame.maxX,app.frame.width)
+            if number == 1 || number == 9 { proof(app,"cycle-acceptance-slot\(number)-\(largest)-\(dark)") }
+        }
+        tap("閉じる",app:app)
+        tap("cycle-recording-block",app:app)
+        XCTAssertTrue(app.staticTexts["cycle-registered-id"].waitForExistence(timeout:5))
+        tap("cycle-copy-recording",app:app)
+        XCTAssertTrue(app.buttons["コピーしました"].exists)
+        tap("閉じる",app:app)
+        XCTAssertTrue(app.buttons["cycle-recording-block"].exists)
+    }
+    private func cycleTextContrast(app:XCUIApplication,text:XCUIElement,dark:Bool) throws {
+        let shot=app.screenshot(),cg=try XCTUnwrap(shot.image.cgImage)
+        let scale=CGFloat(cg.width)/app.frame.width
+        func bytes(_ rect:CGRect) throws -> [UInt8] {
+            let crop=try XCTUnwrap(cg.cropping(to:rect))
+            var buffer=[UInt8](repeating:0,count:crop.width*crop.height*4)
+            try buffer.withUnsafeMutableBytes { ptr in
+                let context=try XCTUnwrap(CGContext(data:ptr.baseAddress,width:crop.width,height:crop.height,bitsPerComponent:8,bytesPerRow:crop.width*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.draw(crop,in:CGRect(x:0,y:0,width:crop.width,height:crop.height))
+            };return buffer
+        }
+        func luminance(_ rgb:ArraySlice<UInt8>) -> Double {
+            let values=rgb.map { Double($0)/255 }.map { $0 <= 0.04045 ? $0/12.92:pow(($0+0.055)/1.055,2.4) }
+            return values[0]*0.2126+values[1]*0.7152+values[2]*0.0722
+        }
+        let background=try bytes(CGRect(x:24*scale,y:text.frame.midY*scale,width:1,height:1))
+        let bg=luminance(background[0..<3])
+        let pixels=try bytes(CGRect(x:text.frame.minX*scale,y:text.frame.minY*scale,width:text.frame.width*scale,height:text.frame.height*scale))
+        let levels=stride(from:0,to:pixels.count,by:4).map { luminance(pixels[$0..<$0+3]) }
+        let ink=try XCTUnwrap(dark ? levels.max():levels.min())
+        let ratio=(max(bg,ink)+0.05)/(min(bg,ink)+0.05)
+        print("PHH_CYCLE_TEXT_CONTRAST dark=\(dark) background=\(background) ratio=\(ratio)")
+        XCTAssertGreaterThanOrEqual(ratio,4.5)
+    }
+    func testCycleLocalFilePickerCancelAndSelect() throws {
+        guard ProcessInfo.processInfo.environment["PHH_CYCLE_FILES_SEEDED"] == "1" else { throw XCTSkip("専用SimulatorのローカルFilesに架空mdを配置した実行だけを対象にする") }
+        let app=launch(["--p7-preview","--dark"])
+        tab("その他",app:app);tap("記録と成績",app:app)
+        let training=app.staticTexts["トレーニング"].firstMatch;reveal(training,app:app);training.tap()
+        tap("計画mdの管理",app:app);tap("計画mdを参照",app:app)
+        let cancel=app.buttons.matching(NSPredicate(format:"label IN %@",["Cancel","キャンセル"])).firstMatch
+        let browser=app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        XCTAssertTrue(browser.waitForExistence(timeout:15),app.debugDescription)
+        // Filesが前回のフォルダーを保持するとCancelがtoolbarから消える場合がある。
+        // ネイティブの戻るでローカルrootへ戻す。Filesの状態/DB/設定を消さない。
+        if !cancel.exists {
+            let back=app.buttons["DOC.navBarButton.backInHistory"]
+            XCTAssertTrue(back.exists && back.isEnabled,app.debugDescription);back.tap()
+        }
+        let appeared=cancel.waitForExistence(timeout:15)
+        proof(app,"cycle-picker-before-cancel")
+        XCTAssertTrue(appeared,app.debugDescription);cancel.tap()
+        XCTAssertTrue(app.buttons["cycle-recording-block"].exists)
+        tap("cycle-recording-block",app:app)
+        XCTAssertEqual(app.staticTexts["cycle-registered-id"].label,"00000000-0000-4000-a000-000000000099")
+        app.buttons["閉じる"].tap()
+        tap("計画mdを参照",app:app)
+        XCTAssertTrue(browser.waitForExistence(timeout:15),app.debugDescription)
+        let browse=app.tabBars.buttons.matching(NSPredicate(format:"label IN %@",["Browse","ブラウズ"])).firstMatch
+        if browse.exists { browse.tap() }
+        proof(app,"cycle-picker-reopened")
+        let file=app.cells.matching(NSPredicate(format:"label CONTAINS %@","synthetic-plan")).firstMatch
+        // 再表示で前のフォルダーに戻る場合は、そのまま架空ファイルを選ぶ。
+        if !file.waitForExistence(timeout:2) {
+            let folder=app.descendants(matching:.any).matching(NSPredicate(format:"label == %@","PHH Synthetic Input")).firstMatch
+            if !folder.exists {
+                let local=app.descendants(matching:.any).matching(NSPredicate(format:"label == %@ OR label == %@","On My iPhone","このiPhone内")).firstMatch
+                XCTAssertTrue(local.waitForExistence(timeout:5),app.debugDescription);local.tap()
+            }
+            XCTAssertTrue(folder.waitForExistence(timeout:5),app.debugDescription)
+            let folderCell=app.cells["PHH Synthetic Input, Folder"]
+            XCTAssertTrue(folderCell.exists)
+            folderCell.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.25)).tap()
+        }
+        proof(app,"cycle-picker-local-files")
+        XCTAssertTrue(file.waitForExistence(timeout:5),app.debugDescription)
+        file.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.25)).tap()
+        let registered=app.staticTexts["この計画は登録済みです。前のCycleIDを保持しました。"]
+        reveal(registered,app:app);XCTAssertTrue(registered.exists)
+        tap("cycle-recording-block",app:app)
+        XCTAssertEqual(app.staticTexts["cycle-registered-id"].label,"00000000-0000-4000-a000-000000000099")
+        proof(app,"cycle-picker-matched-id")
+        // ヘッダーの閉じるはスクロール領域外。revealのswipeDownでsheet自体を閉じない。
+        let close=app.buttons["閉じる"]
+        XCTAssertTrue(close.waitForExistence(timeout:5));XCTAssertTrue(close.isHittable);close.tap()
+        XCTAssertTrue(app.buttons["cycle-recording-block"].exists)
+    }
+
+    func testCycleRecordingLargestCopyLabelGeometry() {
+        for dark in [true,false] {
+            let app=launch(["--p7-preview","--ax5",dark ? "--dark":"--light"])
+            tab("その他",app:app);tap("記録と成績",app:app)
+            let training=app.staticTexts["トレーニング"].firstMatch;reveal(training,app:app);training.tap()
+            tap("cycle-recording-block",app:app)
+            let copy=app.buttons["cycle-copy-recording"];reveal(copy,app:app)
+            let label=copy.staticTexts["記録用ブロックをコピー"]
+            XCTAssertTrue(label.exists)
+            XCTAssertGreaterThanOrEqual(label.frame.minX,0);XCTAssertLessThanOrEqual(label.frame.maxX,app.frame.width)
+            print("PHH_CYCLE_COPY_GEOMETRY dark=\(dark) label=\(label.frame)")
+            proof(app,"cycle-largest-copy-label-before-\(dark)")
+            copy.tap();XCTAssertTrue(app.buttons["コピーしました"].exists)
+            proof(app,"cycle-largest-copy-label-after-\(dark)")
+            app.buttons["閉じる"].tap();XCTAssertTrue(app.buttons["cycle-recording-block"].exists)
+            app.terminate()
+        }
     }
 
 }

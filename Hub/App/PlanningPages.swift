@@ -102,6 +102,11 @@ struct PlanningDayCard: View {
   let model: PlanningScreenModel, date: String, consumed: GoalValues
   @Namespace private var cardZoom
   private var motion = MotionPolicy()
+  /// 負の「残り」を出さず、ホームと同じく超過分を「目標より＋」で示す。
+  private func leftText(_ value: Double?, _ unit: String) -> String {
+    guard let value else { return "残り — \(unit)" }
+    return value >= 0 ? "残り \(foodNumber(value)) \(unit)" : "目標より＋\(foodNumber(-value)) \(unit)"
+  }
   var body: some View {
     Card {
       NavigationLink { GoalDetailPage(model: model, date: date, consumed: consumed).motionZoom(id: "goal", in: cardZoom, reduced: motion.reduced) } label: {
@@ -109,8 +114,8 @@ struct PlanningDayCard: View {
           .frame(minHeight: 44).contentShape(Rectangle())
       }.font(.headline).matchedTransitionSource(id: "goal", in: cardZoom)
       if let goal = try? model.goal(date), let combined=try? model.consumedWithSupplements(consumed,date:date), let left = try? goal.remaining(consumed: combined) {
-        Text("目標 \(foodNumber(goal.total.kcal)) kcal · 残り \(foodNumber(left.kcal)) kcal").font(.subheadline).contentTransition(.numericText()).animation(Motion.animation(reduceMotion: motion.reduced), value: left.kcal)
-        Text("P \(foodNumber(left.protein)) / F \(foodNumber(left.fat)) / C \(foodNumber(left.carbohydrate)) g 残り").font(.caption)
+        Text("目標 \(foodNumber(goal.total.kcal)) kcal · \(leftText(left.kcal, "kcal"))").font(.subheadline).contentTransition(.numericText()).animation(Motion.animation(reduceMotion: motion.reduced), value: left.kcal)
+        Text("P \(leftText(left.protein, "g")) / F \(leftText(left.fat, "g")) / C \(leftText(left.carbohydrate, "g"))").font(.caption)
         if let days=try? model.supplements().days.filter({$0.date==date && $0.isCounted}),!days.isEmpty {
           Text("サプリ込み · 予定\(days.filter {$0.state == .planned}.count)件／服用確認\(days.filter {$0.state == .confirmed}.count)件").font(.caption).foregroundStyle(.secondary)
         }
@@ -157,7 +162,7 @@ struct GoalDetailPage: View {
               pfc("C", goal.total.carbohydrate ?? goal.base.carbohydrate, pfcCarb)
             }.frame(maxWidth: .infinity, alignment: .leading)
           }.padding(.horizontal, 8)
-        }.frame(maxWidth: .infinity).padding(20).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+        }.frame(maxWidth: .infinity).padding(20).background(HubPalette.card, in: RoundedRectangle(cornerRadius: 22))
         MockRows {
           MockRow(title: "基準", chevron: false) { Text("\(foodNumber(goal.base.kcal)) kcal") }
           MockRow(title: "活動補正", chevron: false) { Text("0 kcal").foregroundStyle(.secondary) }

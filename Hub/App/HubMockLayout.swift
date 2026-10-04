@@ -15,7 +15,7 @@ struct HubMockCard<Content: View>: View {
   @ViewBuilder var content: Content
   var body: some View {
     VStack(alignment: .leading, spacing: 12) { content }.frame(maxWidth: .infinity, alignment: .leading)
-      .padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+      .padding(16).background(HubPalette.card, in: RoundedRectangle(cornerRadius: 16))
       .overlay(RoundedRectangle(cornerRadius: 16).stroke(pine.opacity(0.04)))
   }
 }
@@ -43,19 +43,36 @@ struct HubMacroProgress: View {
   }
 }
 struct HubSettingsRow: View {
+  @Environment(\.dynamicTypeSize) private var textSize
+  var accessibilityStacked = false
   let title: String, subtitle: String, symbol: String
   var body: some View {
-    HStack(spacing: 12) {
-      Image(systemName: symbol).font(.title3).foregroundStyle(pine).frame(width: 28)
-      VStack(alignment: .leading, spacing: 3) { Text(title).font(.subheadline.bold()).foregroundStyle(.primary); Text(subtitle).font(.caption).foregroundStyle(.secondary) }
-      Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+    Group {
+      if accessibilityStacked && textSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack { Image(systemName: symbol).font(.title3).foregroundStyle(pine); Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary) }
+          texts
+        }
+      } else {
+        HStack(spacing: 12) {
+          Image(systemName: symbol).font(.title3).foregroundStyle(pine).frame(width: 28)
+          texts
+          Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+        }
+      }
     }.frame(minHeight: 36).contentShape(Rectangle())
+  }
+  private var texts: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(title).font(.subheadline.bold()).foregroundStyle(.primary)
+      Text(subtitle).font(.caption).foregroundStyle(.secondary)
+    }.frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
 struct HubHealthTiles: View {
-  let model: HubModel, screen: HealthScreenModel
   @Environment(\.dynamicTypeSize) private var textSize
+  let model: HubModel, screen: HealthScreenModel
   private var sleep: Double? {
     model.autoSleepDeliveries.filter { $0.targetDate == screen.date && $0.dictionary == .timeAsleep }.max { $0.receivedAt < $1.receivedAt }?.normalization.record?.actualSleepSeconds ?? screen.currentSleep?.seconds
   }
@@ -82,11 +99,27 @@ struct HubHealthTiles: View {
     f.dateFormat = "M/d"; return "\(f.string(from: sample.start))（\(days)日前）"
   }
   private func tile(_ title: String, value: String, unit: String, symbol: String, color: Color, note: String? = nil, stale: Bool = false) -> some View {
-    HStack(alignment:.top,spacing:8) {
-        Image(systemName:symbol).foregroundStyle(color)
-        VStack(alignment:.leading,spacing:4) { Text(title).font(.caption).foregroundStyle(.secondary); MockFigure(value:value,unit:unit,size:21).opacity(stale ? 0.55 : 1); Text(note ?? " ").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(note == nil) }
-        Spacer(minLength:0); Image(systemName:"chevron.right").font(.caption2).foregroundStyle(.secondary)
-      }.padding(12).frame(maxWidth:.infinity,alignment:.leading).background(.background,in:RoundedRectangle(cornerRadius:14))
+    Group {
+      if textSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack { Image(systemName: symbol).foregroundStyle(color); Spacer(); Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary) }
+          tileText(title, value: value, unit: unit, note: note, stale: stale)
+        }
+      } else {
+        HStack(alignment: .top, spacing: 8) {
+          Image(systemName: symbol).foregroundStyle(color)
+          tileText(title, value: value, unit: unit, note: note, stale: stale)
+          Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+        }
+      }
+    }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(HubPalette.card, in: RoundedRectangle(cornerRadius: 14))
+  }
+  private func tileText(_ title: String, value: String, unit: String, note: String?, stale: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(title).font(.caption).foregroundStyle(.secondary)
+      MockFigure(value: value, unit: unit, size: 21).opacity(stale ? 0.55 : 1)
+      Text(note ?? " ").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(note == nil)
+    }
   }
 }
 
@@ -111,14 +144,14 @@ struct HubMockTabBar: View {
           }.buttonStyle(.plain).accessibilityLabel(title).accessibilityIdentifier("hub-tab-"+key).accessibilityAddTraits(selection == key ? .isSelected : [])
         }
       }.padding(.horizontal,18).padding(.top,5)
-    }.background(Color(uiColor:.systemBackground).ignoresSafeArea(edges:.bottom))
+    }.background(HubPalette.tab.ignoresSafeArea(edges:.bottom))
   }
 }
 
 struct HubUnknownNutrientsHelp: View {
   @State private var open = false
   var body: some View {
-    Button("一部不明") { open=true }.frame(minHeight:32).font(.caption2).foregroundStyle(.secondary).buttonStyle(.plain)
+    Button { open=true } label: { Label("栄養値が不明な食品を含みます", systemImage:"info.circle") }.frame(minHeight:32).font(.caption2).foregroundStyle(.secondary).buttonStyle(.plain)
       .accessibilityIdentifier("nutrition-unknown-help")
       .popover(isPresented:$open) {
         VStack(alignment:.leading,spacing:12) {

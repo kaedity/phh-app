@@ -23,11 +23,11 @@ import Testing
         let session = try TrainingSession(id: base.id(1), date: "2026-10-02", name: "Push", lifecycle: .completed, startedAt: startedAt)
         return try .init(sessions: [session], sets: [base.set(101, session: 1, weight: 70, reps: 5)], notes: [])
     }
-    private func evaluate(_ training: TrainingSnapshot, night: SleepTrainingNight?, successes: [String: Bool]? = nil,
+    private func evaluate(_ training: TrainingSnapshot, night: SleepTrainingNight?,
                           from: String? = nil, asOf: String = "2026-10-03") throws -> SleepTrainingInsightsReport {
         let id = try #require(training.series(for: .bench).first).id
         return try SleepTrainingInsights.evaluate(snapshot: training,
-                                                   successfulBySetID: successes ?? [base.id(101): true], asOf: asOf, from: from,
+                                                   asOf: asOf, from: from,
                                                    majorSeries: [.bench: id], sleepNights: night.map { [$0] } ?? [],
                                                    sleepSourceID: night?.sourceID)
     }
@@ -61,19 +61,11 @@ import Testing
         #expect(result.comparisons.first?.sleep?.mainSleepConfirmed == true)
     }
 
-    @Test func missingSleepAndUnknownSuccessDoNotBecomeZeroOrSuccessfulSets() throws {
+    @Test func missingSleepDoesNotBecomeZero() throws {
         let missingSleep = try evaluate(training(), night: nil)
         #expect(missingSleep.comparableCount == 0)
         #expect(missingSleep.comparisons.first?.sleep == nil)
         #expect(missingSleep.comparisons.first?.issues == [.sleepMissing])
-        let night = try SleepTrainingNight.health(samples: sleepSamples(), sourceID: "fictional-sleep", windowID: base.id(201), mainSleepConfirmed: true)
-        let unknown = try evaluate(training(), night: night, successes: [:])
-        #expect(unknown.comparableCount == 0)
-        #expect(unknown.comparisons.first?.performance == nil)
-        #expect(unknown.comparisons.first?.issues.contains(.successUnreported) == true)
-        let failed = try evaluate(training(), night: night, successes: [base.id(101): false])
-        #expect(failed.comparisons.first?.performance == nil)
-        #expect(failed.comparisons.first?.issues.contains(.successUnreported) == false)
     }
 
     @Test func sleepingAfterTrainingCannotBeCalledPriorSleepAndMissingTimeIsExplicit() throws {
@@ -112,7 +104,7 @@ import Testing
         let other = try TrainingSet(id: base.id(105), sessionID: base.id(1), exercise: "ベンチプレス", number: 2,
                                      weight: 120, reps: 5, equipment: "different-machine", variant: "ポーズベンチ")
         let snapshot = try TrainingSnapshot(sessions: original.sessions, sets: original.sets + [other], notes: [])
-        let result = try SleepTrainingInsights.evaluate(snapshot: snapshot, successfulBySetID: [base.id(101): true, other.id: true],
+        let result = try SleepTrainingInsights.evaluate(snapshot: snapshot,
                                                         asOf: "2026-10-03", majorSeries: [.bench: id], sleepNights: [], sleepSourceID: nil)
         #expect(result.availableTrainingSeries.count == 2)
         #expect(result.comparisons.count == 1)
@@ -124,7 +116,7 @@ import Testing
         let set = try TrainingSet(id: base.id(105), sessionID: base.id(1), exercise: "懸垂", number: 1, weight: 20, reps: 5)
         let snapshot = try TrainingSnapshot(sessions: original.sessions, sets: [set], notes: [])
         let id = try #require(snapshot.series(for: .pullup).first).id
-        let result = try SleepTrainingInsights.evaluate(snapshot: snapshot, successfulBySetID: [set.id: true], asOf: "2026-10-03",
+        let result = try SleepTrainingInsights.evaluate(snapshot: snapshot, asOf: "2026-10-03",
                                                         majorSeries: [.pullup: id], sleepNights: [], sleepSourceID: nil)
         #expect(result.comparisons.first?.performance == nil)
         #expect(result.comparisons.first?.issues.contains(.performanceMissing) == true)
@@ -136,7 +128,7 @@ import Testing
         let set = try base.set(102, session: 2, weight: 70, reps: 5)
         let snapshot = try TrainingSnapshot(sessions: original.sessions + [extra], sets: original.sets + [set], notes: [])
         let night = try SleepTrainingNight.health(samples: sleepSamples(), sourceID: "fictional-sleep", windowID: base.id(201), mainSleepConfirmed: true)
-        let result = try evaluate(snapshot, night: night, successes: [base.id(101): true, set.id: true])
+        let result = try evaluate(snapshot, night: night)
         #expect(result.comparisons.count == 1)
         #expect(result.comparisons.first?.issues.contains(.trainingTimeUnreported) == true)
     }
@@ -145,14 +137,14 @@ import Testing
         let samples = try sleepSamples(), source = try training(), id = try #require(source.series(for: .bench).first).id
         let night = try SleepTrainingNight.health(samples: samples, sourceID: "fictional-sleep", windowID: base.id(201), mainSleepConfirmed: true)
         #expect(throws: SleepTrainingFailure.duplicateNight) {
-            try SleepTrainingInsights.evaluate(snapshot: source, successfulBySetID: [base.id(101): true], asOf: "2026-10-03",
+            try SleepTrainingInsights.evaluate(snapshot: source, asOf: "2026-10-03",
                                                 majorSeries: [.bench: id], sleepNights: [night, night], sleepSourceID: night.sourceID)
         }
         #expect(throws: SleepTrainingFailure.invalidValue) {
             try SleepTrainingNight.health(samples: samples, sourceID: "other-source", windowID: base.id(201), mainSleepConfirmed: false)
         }
         #expect(throws: SleepTrainingFailure.invalidValue) {
-            try SleepTrainingInsights.evaluate(snapshot: source, successfulBySetID: [base.id(101): true], asOf: "2026-10-03", from: "2026-02-30",
+            try SleepTrainingInsights.evaluate(snapshot: source, asOf: "2026-10-03", from: "2026-02-30",
                                                 majorSeries: [.bench: id], sleepNights: [], sleepSourceID: nil)
         }
     }
