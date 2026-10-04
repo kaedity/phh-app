@@ -199,7 +199,10 @@ struct FoodAnalysisPage: View {
               .foregroundStyle(.secondary)
           }
         }
+        // 未回答の質問があると保存できないので、押せない見た目にして残りの数を出す（10/4）。
+        let unanswered = draft.questions.filter { (draft.answers[$0] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
         Section {
+          if unanswered > 0 { Text("あと\(unanswered)問に回答すると記録できます").font(.caption).foregroundStyle(.secondary) }
           Button {
             guard !saving else { return }; saving=true
             do {
@@ -207,7 +210,7 @@ struct FoodAnalysisPage: View {
               releasePhoto()
               dismiss()
             } catch { saving=false; self.error = error.localizedDescription }
-          } label: { MotionSaveLabel(title: "確認して記録", busy: saving) }.disabled(busy || saving || draft.items.isEmpty).accessibilityLabel("確認して記録").accessibilityIdentifier("food-analysis-confirm")
+          } label: { MotionSaveLabel(title: "確認して記録", busy: saving) }.disabled(busy || saving || draft.items.isEmpty || unanswered > 0).accessibilityLabel("確認して記録").accessibilityIdentifier("food-analysis-confirm")
         }
   }
 

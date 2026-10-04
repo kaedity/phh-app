@@ -215,14 +215,14 @@ private struct OtherPage: View {
             SyncCard(model:model,compact:true)
             otherSection("設定") {
                 if let planning=model.planningScreen {
-                    NavigationLink { GoalDetailPage(model:planning,date:model.date,consumed:planningConsumed(summary:model.summary)).toolbar(.visible,for:.navigationBar) } label: { otherRow("目標","カロリー・PFCの目標設定","scope") }
+                    NavigationLink { GoalDetailPage(model:planning,date:model.date,consumed:planningConsumed(summary:model.summary)).toolbar(.visible,for:.navigationBar) } label: { otherRow("目標","カロリー・PFCの目標設定","scope") }.accessibilityIdentifier("目標")
                 }
                 if let food=model.foodScreen {
-                    NavigationLink { FoodCatalogPage(model:food).toolbar(.visible,for:.navigationBar) } label: { otherRow("カテゴリー","食事の分類・プリセット・読みの設定","square.grid.2x2") }
+                    NavigationLink { FoodCatalogPage(model:food).toolbar(.visible,for:.navigationBar) } label: { otherRow("カテゴリー","食事の分類・プリセット・読みの設定","square.grid.2x2") }.accessibilityIdentifier("カテゴリー")
                 }
-                NavigationLink { RecordingPreferencesPage().toolbar(.visible,for:.navigationBar) } label: { otherRow("食事の記録設定","日付の区切り・前回値・確認の基準","clock") }
-                NavigationLink { Page(title:"連携") { connections }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { otherRow("連携","ヘルスケア・外部アプリ","link") }
-                NavigationLink { Page(title:"同期") { SyncCard(model:model); syncDetails }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { otherRow("同期","送信待ち・再接続・同期の設定","arrow.triangle.2.circlepath",last:true) }
+                NavigationLink { RecordingPreferencesPage().toolbar(.visible,for:.navigationBar) } label: { otherRow("食事の記録設定","日付の区切り・前回値・確認の基準","clock") }.accessibilityIdentifier("食事の記録設定")
+                NavigationLink { Page(title:"連携") { connections }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { otherRow("連携","ヘルスケア・外部アプリ","link") }.accessibilityIdentifier("連携")
+                NavigationLink { Page(title:"同期") { SyncCard(model:model); syncDetails }.navigationBarTitleDisplayMode(.inline).toolbar(.visible,for:.navigationBar) } label: { otherRow("同期","送信待ち・再接続・同期の設定","arrow.triangle.2.circlepath",last:true) }.accessibilityIdentifier("同期")
             }
             otherSection("見直し") {
                 if let hub=model.store,let planning=model.planningScreen,let health=model.healthScreen {
@@ -231,15 +231,15 @@ private struct OtherPage: View {
                 if let hub=model.store,let planning=model.planningScreen {
                     NavigationLink {WeeklyAllocationPage(hub:hub,planning:planning,date:model.date,preview:model.previewOnly)} label: {otherRow("週内の配分","食べ過ぎた分を残りの日で調整（試算）","calendar.badge.clock")}.accessibilityIdentifier("weekly-allocation-link")
                 }
-                if let hub=model.store {NavigationLink {TrainingInsightsPage(hub:hub,date:model.date)} label: {otherRow("トレーニングの見直し","停滞と負荷を落とす週の目安","figure.strengthtraining.traditional")}}
+                if let hub=model.store {NavigationLink {TrainingInsightsPage(hub:hub,date:model.date)} label: {otherRow("トレーニングの見直し","停滞と負荷を落とす週の目安","figure.strengthtraining.traditional")}.accessibilityIdentifier("トレーニングの見直し")}
                 if let hub=model.store {NavigationLink {SleepTrainingInsightsPage(hub:hub,date:model.date,autoSleep:model.autoSleepDeliveries)} label: {otherRow("睡眠と成績","前夜の睡眠とその日の成績を比べる","moon.zzz")}.accessibilityIdentifier("sleep-training-link")}
                 NavigationLink {MuscleRecoveryPage(snapshot:model.trainingSnapshot,asOf:Date())} label: {otherRow("部位と前回の実施","部位の対応を編集・経過時間を確認","figure.cooldown",last:true)}.accessibilityIdentifier("muscle-recovery-link")
             }
             DisclosureGroup("記録と成績") {
                 VStack(spacing:0) {
-                    if let health=model.healthScreen { NavigationLink { HealthDetailPage(screen:health,autoSleep:model.autoSleepDeliveries,readEnabled:model.healthReadEnabled,readPrepared:model.healthReadPrepared,connect:{await model.connectHealth()},refresh:{await model.catchUpHealth()}) } label: { otherRow("健康データと体重","体重・睡眠・歩数・活動の記録","heart.text.clipboard") } }
-                    NavigationLink { TrainingCalendarPage(snapshot:model.trainingSnapshot,status:model.message,reference:model.trainingCycles.first,date:FoodDates.date(model.date),cycles:model.trainingCycles,saveReference:model.trainingWriteEnabled ? { await model.registerTrainingCycle($0) }:nil,updateSession:model.trainingWriteEnabled ? { await model.updateTrainingSession($0,state:$1,cycle:$2,slot:$3) }:nil).toolbar(.visible,for:.navigationBar) } label: { otherRow("トレーニング","カレンダーとCycle","calendar") }
-                    NavigationLink { TrainingGradesPage(snapshot:model.trainingSnapshot,date:FoodDates.date(model.date)).toolbar(.visible,for:.navigationBar) } label: { otherRow("種目の成績","推定1RM・自己ベスト","chart.xyaxis.line",last:true) }
+                    if let health=model.healthScreen { NavigationLink { HealthDetailPage(screen:health,autoSleep:model.autoSleepDeliveries,readEnabled:model.healthReadEnabled,readPrepared:model.healthReadPrepared,connect:{await model.connectHealth()},refresh:{await model.catchUpHealth()}) } label: { otherRow("健康データと体重","体重・睡眠・歩数・活動の記録","heart.text.clipboard") }.accessibilityIdentifier("健康データと体重") }
+                    NavigationLink { TrainingCalendarPage(snapshot:model.trainingSnapshot,status:model.message,reference:model.trainingCycles.first,date:FoodDates.date(model.date),cycles:model.trainingCycles,saveReference:model.trainingWriteEnabled ? { await model.registerTrainingCycle($0) }:nil,updateSession:model.trainingWriteEnabled ? { await model.updateTrainingSession($0,state:$1,cycle:$2,slot:$3) }:nil).toolbar(.visible,for:.navigationBar) } label: { otherRow("トレーニング","カレンダーとCycle","calendar") }.accessibilityIdentifier("トレーニング")
+                    NavigationLink { TrainingGradesPage(snapshot:model.trainingSnapshot,date:FoodDates.date(model.date)).toolbar(.visible,for:.navigationBar) } label: { otherRow("種目の成績","推定1RM・自己ベスト","chart.xyaxis.line",last:true) }.accessibilityIdentifier("種目の成績")
                 }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16)).padding(.top,8)
             }.font(.subheadline.bold()).tint(pine)
             HStack { Link("アプリについて",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info")!); Spacer(); Link("プライバシー",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info/privacy")!); Link("利用条件",destination:URL(string:"https://sites.google.com/view/personal-health-hub-app-info/terms")!) }.font(.caption2).foregroundStyle(.secondary).padding(.top,8)

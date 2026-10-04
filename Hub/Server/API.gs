@@ -25,7 +25,7 @@ function syncHubChanges(q) {
   return hubRun_(q,store=>{
     ensure_(q.snapshot_revision===undefined,'INVALID_CURSOR');
     const sh=hubMeasure_(store.metrics,'inbox_ms',()=>{const sh=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');return sh;});
-    hubMeasure_(store.metrics,'intake_ms',()=>hubPollWork_(store,hubIntakeReader_(sh),sh.getLastRow(),Date.now()));
+    hubMeasure_(store.metrics,'intake_ms',()=>hubPollWork_(store,hubIntakeReader_(sh,store.config),sh.getLastRow(),Date.now()));
     // 保存前の同じstoreから、既存行＋未確定行で整合した差分応答を作る。
     // hubRun_の一括保存が成功してから返す。外部API書込後のSpreadsheetApp再読込みを避ける。
     // 応答消失時は次回に同じ受付/操作IDの確定済み結果を返す。
@@ -59,16 +59,33 @@ function hubPollWork_(store,rows,lastRow,now) {
   if(typeof hubP5AutoPlan_==='function')hubP5AutoPlan_(store,now);
   return {processed,publication_pending:hubSetting_(store,'publication_dirty',false)};
 }
-function hubIntakeReader_(sheet) {
-  const maxRows=sheet.getMaxRows();
+function hubPrepareIntakeLayout_(sheet,config,force=false) {
+  const current=sheet.getMaxRows(),last=sheet.getLastRow();
+  // 初期の1000行を越える前に空き行を確保する。値には触れず、増設時だけ書式を揃える。
+  const maximum=Math.max(current,Math.ceil((last+1000)/1000)*1000);
+  const layout={book_id:config.inbox,sheet_id:sheet.getSheetId(),formatted_rows:maximum,time_zone:'Asia/Tokyo'};
+  const marker=stable_(layout);
+  if(!force && current===maximum && config.intake_layout===marker)return layout;
+  if(maximum>current)sheet.insertRowsAfter(current,maximum-current);
+  sheet.getRange(2,1,maximum-1,9).setNumberFormat('@');
+  const book=SpreadsheetApp.openById(config.inbox);if(book.getSpreadsheetTimeZone()!=='Asia/Tokyo')book.setSpreadsheetTimeZone('Asia/Tokyo');
+  // 全操作が成功した後だけ印を保存。途中失敗なら次回に同じ範囲を修復する。
+  PropertiesService.getScriptProperties().setProperty('PHH_INTAKE_LAYOUT',marker);config.intake_layout=marker;
+  return layout;
+}
+function prepareHubIntakeSheet() {
+  return hubRun_(null,store=>{const sheet=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sheet && stable_(sheet.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');return hubPrepareIntakeLayout_(sheet,store.config,true);});
+}
+function hubIntakeReader_(sheet,config=null) {
+  const maxRows=config?hubPrepareIntakeLayout_(sheet,config).formatted_rows:sheet.getMaxRows();
   return row=>row>maxRows?INTAKE_HEADERS_.map(()=>''):sheet.getRange(row,1,1,9).getValues()[0];
 }
 function processHubIntake(q) {
-  return hubRun_(q,store=>{const book=SpreadsheetApp.openById(store.config.inbox),sh=book.getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');return hubPollWork_(store,hubIntakeReader_(sh),sh.getLastRow(),Date.now());});
+  return hubRun_(q,store=>{const book=SpreadsheetApp.openById(store.config.inbox),sh=book.getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');return hubPollWork_(store,hubIntakeReader_(sh,store.config),sh.getLastRow(),Date.now());});
 }
 function syncHubForApp(q) {
   // 一つのロックで受付処理・保存・取得応答を作る。保存後にロックを取り直さない。
-  return hubRun_(q,store=>{const sh=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');hubPollWork_(store,hubIntakeReader_(sh),sh.getLastRow(),Date.now());const state=hubEmptyState_(),date=intakeDate_(q.local_date);hubLoadDate_(store,date,state);return hubDayResult_(store,q,state);});
+  return hubRun_(q,store=>{const sh=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');hubPollWork_(store,hubIntakeReader_(sh,store.config),sh.getLastRow(),Date.now());const state=hubEmptyState_(),date=intakeDate_(q.local_date);hubLoadDate_(store,date,state);return hubDayResult_(store,q,state);});
 }
 function setupHub() {
   const lock=LockService.getScriptLock();ensure_(lock.tryLock(1000),'BUSY');
@@ -81,7 +98,7 @@ function hubSetupLocked_() {
   ensure_(book.getSheets().every(sh=>sh.getLastRow()===0 || sh.getLastRow()===1 && HUB_SCHEMA_.tables[sh.getName()] && stable_(sh.getRange(1,1,1,HUB_SCHEMA_.tables[sh.getName()].columns.length).getValues()[0])===stable_(HUB_SCHEMA_.tables[sh.getName()].columns.map(col=>col.name))),'INITIALIZE_NONEMPTY_BOOK');
   for(const [name,t] of Object.entries(HUB_SCHEMA_.tables)) {const sh=book.getSheetByName(name) || book.insertSheet(name);sh.getRange(1,1,1,t.columns.length).setValues([t.columns.map(col=>col.name)]);sh.setFrozenRows(1);}
   for(const id of [c.inbox,c.results]) {const b=SpreadsheetApp.openById(id),mark=b.getSheetByName('_PHH');if(mark?.getLastRow()){ensure_(stable_(mark.getRange(1,1,1,2).getValues()[0])===stable_(['environment',c.environment]),'ENVIRONMENT_MISMATCH');}else (mark || b.insertSheet('_PHH')).getRange(1,1,1,2).setValues([['environment',c.environment]]);}
-  const ib=SpreadsheetApp.openById(c.inbox),inbox=ib.getSheetByName('受付') || ib.insertSheet('受付');if(!inbox.getLastRow())inbox.getRange(1,1,1,9).setValues([INTAKE_HEADERS_]);else ensure_(stable_(inbox.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');inbox.setFrozenRows(1);inbox.getRange(2,1,inbox.getMaxRows()-1,9).setNumberFormat('@');
+  const ib=SpreadsheetApp.openById(c.inbox),inbox=ib.getSheetByName('受付') || ib.insertSheet('受付');if(!inbox.getLastRow())inbox.getRange(1,1,1,9).setValues([INTAKE_HEADERS_]);else ensure_(stable_(inbox.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');inbox.setFrozenRows(1);hubPrepareIntakeLayout_(inbox,c,true);
   const store=new HubSheetsStore(c),now=Date.now();for(const [key,value] of Object.entries({environment:c.environment,schema_version:1,real_data_enabled:false,next_change:0,generation:1,next_inbox_row:2,audit_row:2,publication_dirty:false}))hubSet_(store,key,value,now);store.commit();return {status:'initialized',environment:c.environment,real_data_enabled:false};
 }
 function hubPublishValues_(book,name,header,rows) {

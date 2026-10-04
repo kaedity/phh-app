@@ -16,9 +16,10 @@ struct FoodPresetOrderPage: View {
     let catalog: FoodCatalog
     @State private var presets: [FoodPreset]
     @State private var fixed: Bool
-    init(catalog: FoodCatalog) {
+    // 初期の並びは、食事画面で今見ている並び（記録の回数・区分・並び方）にそろえる。名前順のまま固定してしまわないため（10/4）。
+    init(catalog: FoodCatalog, meals: [FoodMeal] = [], slot: String = "朝食", mode: FoodPresetRanking.Mode = .frequent) {
         self.catalog = catalog
-        _presets = State(initialValue: FoodPresetRanking.order(catalog.visiblePresets(), meals: [], slot: "朝食", mode: .frequent, fixedOrder: PresetDisplayPreferences.fixedOrder))
+        _presets = State(initialValue: FoodPresetRanking.order(catalog.visiblePresets(), meals: meals, slot: slot, mode: mode, fixedOrder: PresetDisplayPreferences.fixedOrder))
         _fixed = State(initialValue: !PresetDisplayPreferences.fixedOrder.isEmpty)
     }
     var body: some View {

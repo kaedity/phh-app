@@ -256,10 +256,14 @@ import XCTest
     func testAnimatedFoodHistoryEditsPreserveTotalsAndPendingCount() {
         let app = launch(["--p4-preview", "--light"])
         XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 10))
-        tap("昼食", app: app); tap("朝食", app: app)
+        let slots = app.otherElements["segments-記録の区分"]
+        for name in ["昼食", "朝食"] {
+            slots.buttons[name].tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: slots.buttons[name])], timeout: 3), .completed)
+        }
         tap("全粒粉パンを追加", app: app)
-        XCTAssertTrue(app.staticTexts["追加しました · 端末に保存済み"].exists)
-        tap("取り消す", app: app); XCTAssertTrue(app.staticTexts["175"].exists)
+        XCTAssertTrue(app.staticTexts["「全粒粉パン」を朝食に追加しました"].waitForExistence(timeout: 2), app.debugDescription)
+        let undo = app.buttons["food-undo"]; XCTAssertTrue(undo.waitForExistence(timeout: 2)); undo.tap(); XCTAssertTrue(app.staticTexts["175"].waitForExistence(timeout: 2))
         tap("履歴", app: app); tap("全粒粉パン・ゆで卵のメニュー", app: app)
         tap("量・日付を変更", app: app); tap("量を0.5倍増やす", app: app)
         XCTAssertEqual(app.textFields["food-edit-factor"].value as? String, "1.5"); proof(app, "motion-quantity-sheet")
@@ -412,7 +416,7 @@ import XCTest
         let edit = app.buttons.matching(identifier: "量・日付を変更").firstMatch
         reveal(edit, app: app)
         XCTAssertTrue(edit.isEnabled)
-        XCTAssertTrue(app.staticTexts["端末に保存済み · 送信待ち"].exists)
+        XCTAssertTrue(app.staticTexts["同期待ち"].exists)
         edit.tap()
         tap("2倍", app: app)
         app.navigationBars.buttons["保存"].tap()

@@ -23,7 +23,8 @@ import PHHHubCore
     private(set) var hydrationScreen:HydrationScreenModel?
     private(set) var trainingSnapshot: TrainingSnapshot = .empty
     private(set) var rows: [LocalRow] = []; private(set) var pending: [Pending] = []
-    var date: String = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = TimeZone(identifier: "Asia/Tokyo"); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date()) }()
+    // ホームの「今日」は食事画面と同じ記録日（深夜の区切り時刻を使う）。深夜1時に食事画面は前日、ホームは今日、とずれないため（10/4）。
+    var date: String = FoodDates.text(RecordingPreferences.day())
     init() { previewOnly = false; google = GoogleTransport(); chatGPT = ChatGPTSession(); configureStore() }
     #if DEBUG
     init(previewStore: HubStore, empty: Bool, syncing: Bool, failure: Bool) throws {
@@ -95,7 +96,7 @@ import PHHHubCore
         configureStore(); refreshCurrentDay(); await healthRuntime?.foregroundCatchUp(); do { try reloadHealth() } catch { message="健康データの前回値を保持しています" }
     }
     private func refreshCurrentDay() {
-        let today = HealthDates.local(Date())
+        let today = FoodDates.text(RecordingPreferences.day())
         guard date != today else { return }; date = today
         do { try reload() } catch { message = "前回の記録を保持しています。再取得してください。" }
     }

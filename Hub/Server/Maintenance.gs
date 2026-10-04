@@ -36,7 +36,7 @@ function startHubMaintenance(hours=24) {
 function hubMaintenanceIntake_() {
   return hubRun_(null,store=>{
     const sh=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');
-    const now=Date.now(),result=hubPollWork_(store,hubIntakeReader_(sh),sh.getLastRow(),now);
+    const now=Date.now(),result=hubPollWork_(store,hubIntakeReader_(sh,store.config),sh.getLastRow(),now);
     const plan=hubNotificationPlan_(store.find('Reviews','status','未対応'),hubSetting_(store,'last_reminder_date',''),now);
     return {...result,needs_notification:plan!==null};
   });

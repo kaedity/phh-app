@@ -37,7 +37,7 @@ function hubConfig_() {
   ensure_(new Set([p.PHH_CANONICAL,p.PHH_INBOX,p.PHH_RESULTS]).size === 3, 'BOOKS_NOT_SEPARATE');
   ensure_(Session.getEffectiveUser().getEmail() === p.PHH_OWNER_EMAIL, 'OWNER_REQUIRED');
   return {environment:p.PHH_ENVIRONMENT, real_data_enabled:p.PHH_REAL_DATA_ENABLED === 'true', canonical:p.PHH_CANONICAL,inbox:p.PHH_INBOX,results:p.PHH_RESULTS,owner:p.PHH_OWNER_EMAIL,chat:p.PHH_CHAT_EMAIL,notify_to:p.PHH_NOTIFY_TO,
-    health_real_enabled:p.PHH_HEALTH_REAL_ENABLED === 'true',health_metrics:(p.PHH_HEALTH_METRICS || '').split(',').map(s=>s.trim()).filter(Boolean),health_from:p.PHH_HEALTH_FROM || null};
+    health_real_enabled:p.PHH_HEALTH_REAL_ENABLED === 'true',health_metrics:(p.PHH_HEALTH_METRICS || '').split(',').map(s=>s.trim()).filter(Boolean),health_from:p.PHH_HEALTH_FROM || null,intake_layout:p.PHH_INTAKE_LAYOUT || ''};
 }
 function hubCheckRequest_(config, q,health=false) { ensure_(q && q.environment === config.environment && q.schema_version === 1, 'ENVIRONMENT_MISMATCH'); ensure_(config.real_data_enabled || q.synthetic === true || health && config.health_real_enabled === true && ['save_health_delta','get_health_details'].includes(q.action), 'REAL_DATA_DISABLED'); }
 function hubCell_(v) { return v === null ? {} : {userEnteredValue:typeof v === 'boolean' ? {boolValue:v} : typeof v === 'number' ? {numberValue:v} : {stringValue:String(v)}}; }
