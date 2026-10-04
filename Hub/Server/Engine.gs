@@ -83,14 +83,24 @@ function hubApplyApp_(store,op,now) {
   return hubSaveOperation_(store,op.operation_id,hash,'app',op.action,record,null,now);
 }
 function hubProcessIntakeRow_(store,input,sheetRow,now) {
-  const cells=INTAKE_HEADERS_.map((_,i)=>intakeCell_(input[i]));if(cells.every(x=>x===''))return null;cells[3]=intakeNormalizeDate_(cells[3]);
-  const key=cells[0] || '#row'+sheetRow,hash=hubHash_(cells),state=hubEmptyState_(),prior=hubLoadLedger_(store,key,state,false),oldScan=store.get('IntakeScans',String(sheetRow)),firstSeen=prior?.first_seen ?? oldScan?.first_seen ?? now;
-  const scan={id:String(sheetRow),sheet_row:sheetRow,intake_id:cells[0],content_hash:hash,first_seen:firstSeen,checked_at:now,status:'保留',message:'',record_id:null};
-  const saveScan=(status,message,recordId)=>{scan.status=status;scan.message=message || '';scan.record_id=recordId || null;store.put('IntakeScans',scan);if(!oldScan || oldScan.content_hash!==hash || oldScan.status!==status){hubSet_(store,'publication_dirty',true,now);let day;try{day=intakeDate_(cells[3]);}catch(_){day=intakeJstDate_(now);}hubSet_(store,'publish:'+day,true,now);}};
+  const cells=INTAKE_HEADERS_.map((_,i)=>intakeCell_(input[i])),oldScan=store.get('IntakeScans',String(sheetRow));
+  if(cells.every(x=>x==='') && !oldScan)return null;cells[3]=intakeNormalizeDate_(cells[3]);
+  // 受付番号を消す/変える操作も、同じ物理行の受領済み台帳に照合する。
+  const state=hubEmptyState_(),rowKey=oldScan?.intake_id || '#row'+sheetRow,rowPrior=oldScan?hubLoadLedger_(store,rowKey,state,false):null;
+  const acceptedRow=!!rowPrior && oldScan.status!=='保留' && rowPrior.status!=='保留';
+  const key=acceptedRow?rowKey:cells[0] || rowKey,prior=acceptedRow?rowPrior:hubLoadLedger_(store,key,state,false),hash=hubHash_(cells),firstSeen=prior?.first_seen ?? oldScan?.first_seen ?? now;
+  const scan={id:String(sheetRow),sheet_row:sheetRow,intake_id:acceptedRow?oldScan.intake_id:cells[0] || oldScan?.intake_id || '',content_hash:hash,first_seen:firstSeen,checked_at:now,status:'保留',message:'',record_id:null};
+  const retirePending=(recordId,operationId)=>{if(rowPrior?.status==='保留' && rowKey!==key){const alias=store.get('IntakeLedger',rowKey);Object.assign(alias,{status:'重複',message:'同じ行の受付番号 '+scan.intake_id+' へ引き継ぎ',record_id:recordId || null,operation_id:operationId || null});store.put('IntakeLedger',alias);}};
+  const saveScan=(status,message,recordId)=>{scan.status=status;scan.message=message || '';scan.record_id=recordId || null;store.put('IntakeScans',scan);if(!oldScan || oldScan.content_hash!==hash || oldScan.status!==status){
+    hubSet_(store,'publication_dirty',true,now);const days=new Set();
+    for(const candidate of [cells[3],acceptedRow?store.get('IntakeLedger',key).original_3:null])try{days.add(intakeDate_(candidate));}catch(_){}
+    if(!days.size)days.add(intakeJstDate_(now));for(const day of days)hubSet_(store,'publish:'+day,true,now);
+  }};
   if(prior && prior.status!=='保留') {
-    if(hubHash_(prior.fp)===hubHash_(stable_(cells))) {const status=prior.sheet_row===sheetRow?prior.status:'重複';saveScan(status,status==='重複'?'同じ受付番号・同じ内容の行が既にある':prior.message,prior.record_id);return {status,intake_id:cells[0],duplicate:prior.sheet_row!==sheetRow};}
-    if(!prior.flagged[hash]) {const rv=intakeReview_(state,cells[0],sheetRow,prior.sheet_row===sheetRow?'ROW_EDITED':'ID_REUSED','',now);store.put('Reviews',{id:rv.review_id,intake_id:rv.intake_id,sheet_row:rv.sheet_row,reason:rv.reason,message:rv.message,created_at:rv.created_at,status:rv.status,resolution:null,notified_at:null,renotified_date:null});const raw=store.get('IntakeLedger',key);raw.flagged_hashes=[raw.flagged_hashes,hash].filter(Boolean).join(';');store.put('IntakeLedger',raw);hubSet_(store,'publication_dirty',true,now);}
-    saveScan('要確認',INTAKE_REASONS_[prior.sheet_row===sheetRow?'ROW_EDITED':'ID_REUSED'],prior.record_id);return {status:'要確認',intake_id:cells[0]};
+    if(hubHash_(prior.fp)===hubHash_(stable_(cells))) {const status=prior.sheet_row===sheetRow?prior.status:'重複';retirePending(prior.record_id,prior.operation_id);saveScan(status,status==='重複'?'同じ受付番号・同じ内容の行が既にある':prior.message,prior.record_id);return {status,intake_id:scan.intake_id,duplicate:prior.sheet_row!==sheetRow};}
+    const reason=acceptedRow || prior.sheet_row===sheetRow?'ROW_EDITED':'ID_REUSED';
+    if(!prior.flagged[hash]) {const rv=intakeReview_(state,scan.intake_id,sheetRow,reason,'',now);store.put('Reviews',{id:rv.review_id,intake_id:rv.intake_id,sheet_row:rv.sheet_row,reason:rv.reason,message:rv.message,created_at:rv.created_at,status:rv.status,resolution:null,notified_at:null,renotified_date:null});const raw=store.get('IntakeLedger',key);raw.flagged_hashes=[raw.flagged_hashes,hash].filter(Boolean).join(';');store.put('IntakeLedger',raw);hubSet_(store,'publication_dirty',true,now);}
+    retirePending(prior.record_id,prior.operation_id);saveScan('要確認',INTAKE_REASONS_[reason],prior.record_id);return {status:'要確認',intake_id:scan.intake_id};
   }
   const opId=hubId_(store.config.environment+'|intake|'+key);let applied,foodChanges=[],reason=null,message='',status='保存済み';
   try {
@@ -101,6 +111,9 @@ function hubProcessIntakeRow_(store,input,sheetRow,now) {
       if(ledger?.record_id) {const idx=store.get('RecordIndex',ledger.record_id);if(idx?.local_date)hubLoadDate_(store,idx.local_date,state);}
     } else if(cells[3])hubLoadDate_(store,cells[3],state);
     intakeCheck_([cells[0],cells[1],cells[2],cells[1]==='戻す'?'x':cells[3],cells[1]==='戻す'?'x':cells[4]].every(x=>x!==''),'INCOMPLETE');
+    const allowsEmptyContent=cells[1]==='記録' && (cells[2]==='記録日' || cells[2]==='サプリ' && cells[4]==='服用');
+    const needsContent=['記録','修正','補足','戻す'].includes(cells[1]) && !allowsEmptyContent;
+    intakeCheck_(!needsContent || cells[7]!=='','INCOMPLETE','内容');
     const planning=typeof hubP5Enabled_==='function' && hubP5Enabled_() && ['サプリ','記録日'].includes(cells[2]);
     const candidate=planning?hubP5Intake_(store,cells,opId,now,firstSeen):typeof hubP3Enabled_==='function' && hubP3Enabled_()?hubP3Intake_(store,state,cells,now,firstSeen):intakeApply_(state,cells,now,firstSeen);
     if(!planning){
@@ -117,7 +130,7 @@ function hubProcessIntakeRow_(store,input,sheetRow,now) {
     let [code,...detail]=String(e.message).split(':');
     if(!(code in INTAKE_REASONS_)) {if(!/^[A-Z][A-Z0-9_]+$/.test(code) || ['BUSY','STORAGE_UNAVAILABLE'].includes(code))throw e;detail=[code,...detail];code='INTERNAL';}
     if(code==='INCOMPLETE' && now-firstSeen<INTAKE_WAIT_MS_) {status='保留';message='書き込みの完了を待っています';}
-    else {status='要確認';reason=code;message=(INTAKE_REASONS_[code] || code)+(detail.length?'：'+detail.join(':'):'');store.put('Reviews',{id:hubUUID_(),intake_id:cells[0],sheet_row:sheetRow,reason,message,created_at:now,status:'未対応',resolution:null,notified_at:null,renotified_date:null});}
+    else {status='要確認';reason=code;message=(INTAKE_REASONS_[code] || code)+(detail.length?'：'+detail.join(':'):'');store.put('Reviews',{id:hubUUID_(),intake_id:scan.intake_id,sheet_row:sheetRow,reason,message,created_at:now,status:'未対応',resolution:null,notified_at:null,renotified_date:null});}
   }
   if(applied?.planning){
     applied.stage.flush();for(const row of applied.undoRows)store.put('UndoValues',row);
@@ -132,8 +145,11 @@ function hubProcessIntakeRow_(store,input,sheetRow,now) {
     if(cells[1]==='戻す') {const target=intakeContent_(cells[7])['対象受付番号'],raw=store.get('IntakeLedger',target);raw.undone=true;store.put('IntakeLedger',raw);}
     hubSaveOperation_(store,opId,hash,'conversation',cells[1],record,null,now);
   } else if(reason)hubSaveOperation_(store,opId,hash,'conversation',cells[1],null,reason,now);
-  const ledger={id:key,intake_id:cells[0],sheet_row:sheetRow,content_hash:hash,first_seen:firstSeen,status,message,record_id:applied?.record_id || null,operation_id:status==='保留'?null:opId,undone:false,flagged_hashes:''};cells.forEach((v,i)=>ledger['original_'+i]=v);store.put('IntakeLedger',ledger);saveScan(status,message,applied?.record_id);hubSet_(store,'publication_dirty',true,now);
-  return {status,intake_id:cells[0],record_id:applied?.record_id || null,message};
+  const ledger={id:key,intake_id:scan.intake_id,sheet_row:sheetRow,content_hash:hash,first_seen:firstSeen,status,message,record_id:applied?.record_id || null,operation_id:status==='保留'?null:opId,undone:false,flagged_hashes:''};cells.forEach((v,i)=>ledger['original_'+i]=v);store.put('IntakeLedger',ledger);
+  // 番号が最後に書かれた行の仮台帳を保留のまま残さない。確定操作は新番号の1件だけ。
+  retirePending(ledger.record_id,ledger.operation_id);
+  saveScan(status,message,applied?.record_id);hubSet_(store,'publication_dirty',true,now);
+  return {status,intake_id:scan.intake_id,record_id:applied?.record_id || null,message};
 }
 function hubChanges_(store,q) {
   hubCheckRequest_(store.config,q);ensure_(Number.isSafeInteger(q.after) && q.after>=0 && Number.isInteger(q.limit) && q.limit>=1 && q.limit<=500,'INVALID_CURSOR');

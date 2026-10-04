@@ -28,7 +28,7 @@ class HubSheetsStore {
     const targets=[],seen=new Set(),requested=Array.from(entries);
     // Settingsの固定キーだけをまとめる。表示文字列を使い、特殊文字は従来検索へ戻す。
     // 索引はこのprefetch呼出しだけで使い、次回へ保持しない。
-    const settingKeys=new Set(['environment','schema_version','real_data_enabled','generation','next_change','next_inbox_row','audit_row','publication_dirty']);
+    const settingKeys=new Set(['environment','schema_version','real_data_enabled','generation','next_change','next_inbox_row','audit_row','inbox_audit_end','publication_dirty']);
     const settingsBatch=new Set(requested.filter(e=>e.table==='Settings' && settingKeys.has(e.id) && !this.pending.has('Settings\0'+e.id) && !('Settings\0'+e.id in this.cache)).map(e=>e.id)).size>1;
     let settingsIndex;
     for(const {table,id} of requested) {
@@ -116,7 +116,7 @@ class HubSheetsStore {
 function hubColumn_(n) { let s='';for(;n>0;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s; }
 function hubSetting_(store,key,fallback) { const r=store.get('Settings',key); if(!r)return fallback;return r.value_type==='number'?r.number_value:r.value_type==='boolean'?r.bool_value:r.string_value; }
 function hubSet_(store,key,value,now) { const old=store.get('Settings',key); store.put('Settings',{id:key,value_type:typeof value,string_value:typeof value==='string'?value:null,number_value:typeof value==='number'?value:null,bool_value:typeof value==='boolean'?value:null,revision:(old?.revision || 0)+1,updated_at:new Date(now).toISOString()}); }
-function hubEnvironment_(store) { store.prefetch(['environment','schema_version','real_data_enabled','generation','next_change','next_inbox_row','audit_row','publication_dirty'].map(id=>({table:'Settings',id}))); ensure_(hubSetting_(store,'environment',null)===store.config.environment && hubSetting_(store,'schema_version',null)===1,'ENVIRONMENT_MISMATCH'); ensure_(hubSetting_(store,'real_data_enabled',false)===store.config.real_data_enabled,'REAL_DATA_SETTING_MISMATCH'); }
+function hubEnvironment_(store) { store.prefetch(['environment','schema_version','real_data_enabled','generation','next_change','next_inbox_row','audit_row','inbox_audit_end','publication_dirty'].map(id=>({table:'Settings',id}))); ensure_(hubSetting_(store,'environment',null)===store.config.environment && hubSetting_(store,'schema_version',null)===1,'ENVIRONMENT_MISMATCH'); ensure_(hubSetting_(store,'real_data_enabled',false)===store.config.real_data_enabled,'REAL_DATA_SETTING_MISMATCH'); }
 function hubLoadDate_(store,date,state) {
   if(state.loaded_dates.has(date))return;state.loaded_dates.add(date);
   const ix=store.find('RecordIndex','local_date',date);

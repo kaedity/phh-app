@@ -163,4 +163,20 @@ test('Settings failed key scan remains retryable without cache or writes',()=>{
  assert.equal(Object.keys(store.cache).length,0);assert.equal(batches.length,before);
  store.prefetch([{table:'Settings',id:'environment'},{table:'Settings',id:'schema_version'}]);assert.equal(store.get('Settings','environment').string_value,'PHH_TEST');
 });
+test('accepted row beyond 1000 survives deletion of allocated grid and failed review commit',()=>{
+ const sh=books.inbox.getSheetByName('受付'),oldRows=sh.rows,oldMax=sh.maxRows,key='20261005-1001-01',at=1001;
+ try {
+  sh.rows=[oldRows[0]];sh.maxRows=1010;sh.getRange(at,1,1,9).setValues([[key,'記録','筋トレ','2026-10-05','Pull','架空の末尾監査','1','重量kg=10; 回数=8','']]);
+  ctx.hubRun_(null,store=>{ctx.hubSet_(store,'next_inbox_row',at,Date.now());ctx.hubSet_(store,'audit_row',at,Date.now());});
+  ctx.processHubIntake(null);let store=new ctx.Store(cfg),ledger=store.get('IntakeLedger',key);assert.equal(ledger.status,'保存済み');
+  const original=JSON.stringify(store.get('TrainingSets',ledger.record_id));assert.equal(ctx.hubSetting_(store,'inbox_audit_end'),at);
+  sh.rows=[oldRows[0]];sh.maxRows=1;ctx.hubRun_(null,store=>ctx.hubSet_(store,'audit_row',at,Date.now()));
+  failCanonical=true;try{assert.throws(()=>ctx.processHubIntake(null),/STORAGE_UNAVAILABLE/);}finally{failCanonical=false;}
+  assert.equal(new ctx.Store(cfg).get('IntakeScans',String(at)).status,'保存済み');
+  ctx.processHubIntake(null);store=new ctx.Store(cfg);assert.equal(store.get('IntakeScans',String(at)).status,'要確認');
+  assert.equal(JSON.stringify(store.get('TrainingSets',ledger.record_id)),original);assert.equal(store.get('IntakeLedger',key).status,'保存済み');
+  assert.equal(store.find('Reviews','intake_id',key).length,1);assert.equal(store.find('Reviews','intake_id',key)[0].reason,'ROW_EDITED');
+  ctx.hubRun_(null,store=>ctx.hubSet_(store,'audit_row',at,Date.now()));ctx.processHubIntake(null);assert.equal(new ctx.Store(cfg).find('Reviews','intake_id',key).length,1);
+ }finally{sh.rows=oldRows;sh.maxRows=oldMax;failCanonical=false;}
+});
 console.log('Hub storage: '+passed+' PASSED');

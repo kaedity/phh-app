@@ -25,7 +25,7 @@ function syncHubChanges(q) {
   return hubRun_(q,store=>{
     ensure_(q.snapshot_revision===undefined,'INVALID_CURSOR');
     const sh=hubMeasure_(store.metrics,'inbox_ms',()=>{const sh=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');return sh;});
-    hubMeasure_(store.metrics,'intake_ms',()=>hubPollWork_(store,row=>sh.getRange(row,1,1,9).getValues()[0],sh.getLastRow(),Date.now()));
+    hubMeasure_(store.metrics,'intake_ms',()=>hubPollWork_(store,hubIntakeReader_(sh),sh.getLastRow(),Date.now()));
     // 保存前の同じstoreから、既存行＋未確定行で整合した差分応答を作る。
     // hubRun_の一括保存が成功してから返す。外部API書込後のSpreadsheetApp再読込みを避ける。
     // 応答消失時は次回に同じ受付/操作IDの確定済み結果を返す。
@@ -44,24 +44,31 @@ function hubDayResult_(store,q,state) {
 function getHubDay(q) {return hubRun_(q,store=>{const date=intakeDate_(q.local_date),state=hubEmptyState_();hubLoadDate_(store,date,state);return hubDayResult_(store,q,state);});}
 function hubPollWork_(store,rows,lastRow,now) {
   let processed=0;const start=hubSetting_(store,'next_inbox_row',2);
+  // 末尾を削除しても過去に見た行を監査する。旧版はcursorの手前までを引き継ぐ。
+  const auditEnd=Math.max(lastRow,start-1,hubSetting_(store,'inbox_audit_end',1));
   // 新規は最大20行。保留は完了後にも再確認する。受付済みは別の巡回cursorで監査。
   const selected=new Set();for(let row=start;row<=lastRow && selected.size<20;row++)selected.add(row);
   for(const l of store.find('IntakeLedger','status','保留').slice(0,20))selected.add(l.sheet_row);
-  const audit=hubSetting_(store,'audit_row',2);for(let row=audit;row<Math.min(start,audit+20,lastRow+1);row++)selected.add(row);
+  const savedAudit=hubSetting_(store,'audit_row',2),audit=savedAudit>auditEnd?2:savedAudit;for(let row=audit;row<Math.min(audit+20,auditEnd+1);row++)selected.add(row);
   const inputs=new Map(),keys=[];
   for(const row of selected) {const cells=rows(row);inputs.set(row,cells);keys.push({table:'IntakeScans',id:String(row)},{table:'IntakeLedger',id:intakeCell_(cells[0]) || '#row'+row});}
   store.prefetch(keys);
+  store.prefetch(Array.from(selected).map(row=>store.get('IntakeScans',String(row))).filter(Boolean).map(scan=>({table:'IntakeLedger',id:scan.intake_id || '#row'+scan.sheet_row})));
   for(const row of Array.from(selected).sort((a,b)=>a-b)) {hubProcessIntakeRow_(store,inputs.get(row),row,now);processed++;}
-  hubSet_(store,'next_inbox_row',Math.min(lastRow+1,start+20),now);hubSet_(store,'audit_row',audit+20>=Math.min(start,lastRow+1)?2:audit+20,now);
+  hubSet_(store,'next_inbox_row',Math.min(lastRow+1,start+20),now);hubSet_(store,'audit_row',audit+20>auditEnd?2:audit+20,now);hubSet_(store,'inbox_audit_end',auditEnd,now);
   if(typeof hubP5AutoPlan_==='function')hubP5AutoPlan_(store,now);
   return {processed,publication_pending:hubSetting_(store,'publication_dirty',false)};
 }
+function hubIntakeReader_(sheet) {
+  const maxRows=sheet.getMaxRows();
+  return row=>row>maxRows?INTAKE_HEADERS_.map(()=>''):sheet.getRange(row,1,1,9).getValues()[0];
+}
 function processHubIntake(q) {
-  return hubRun_(q,store=>{const book=SpreadsheetApp.openById(store.config.inbox),sh=book.getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');const last=sh.getLastRow(),cache={};return hubPollWork_(store,row=>cache[row] || (cache[row]=sh.getRange(row,1,1,9).getValues()[0]),last,Date.now());});
+  return hubRun_(q,store=>{const book=SpreadsheetApp.openById(store.config.inbox),sh=book.getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');return hubPollWork_(store,hubIntakeReader_(sh),sh.getLastRow(),Date.now());});
 }
 function syncHubForApp(q) {
   // 一つのロックで受付処理・保存・取得応答を作る。保存後にロックを取り直さない。
-  return hubRun_(q,store=>{const sh=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');hubPollWork_(store,row=>sh.getRange(row,1,1,9).getValues()[0],sh.getLastRow(),Date.now());const state=hubEmptyState_(),date=intakeDate_(q.local_date);hubLoadDate_(store,date,state);return hubDayResult_(store,q,state);});
+  return hubRun_(q,store=>{const sh=SpreadsheetApp.openById(store.config.inbox).getSheetByName('受付');ensure_(sh && stable_(sh.getRange(1,1,1,9).getValues()[0])===stable_(INTAKE_HEADERS_),'INBOX_SCHEMA');hubPollWork_(store,hubIntakeReader_(sh),sh.getLastRow(),Date.now());const state=hubEmptyState_(),date=intakeDate_(q.local_date);hubLoadDate_(store,date,state);return hubDayResult_(store,q,state);});
 }
 function setupHub() {
   const lock=LockService.getScriptLock();ensure_(lock.tryLock(1000),'BUSY');
