@@ -14,8 +14,17 @@ struct SleepTrainingInsightsPage: View {
     @State private var period = 30
     @State private var selectedSource = ""
     @State private var initialSourceSelected = false
-    @State private var selectedWindows: [String: String] = [:]
-    @State private var mainSleepIDs: Set<String> = []
+    /// 区間の選択と主睡眠の確認は端末に残す。画面を出るたびに毎晩の確認をやり直させない（10/4レビュー）。
+    @AppStorage("sleepTraining.selectedWindows") private var selectedWindowsJSON = "{}"
+    @AppStorage("sleepTraining.mainSleepIDs") private var mainSleepIDsJSON = "[]"
+    private var selectedWindows: [String: String] {
+        get { (try? JSONDecoder().decode([String: String].self, from: Data(selectedWindowsJSON.utf8))) ?? [:] }
+        nonmutating set { if let data = try? JSONEncoder().encode(newValue) { selectedWindowsJSON = String(decoding: data, as: UTF8.self) } }
+    }
+    private var mainSleepIDs: Set<String> {
+        get { Set((try? JSONDecoder().decode([String].self, from: Data(mainSleepIDsJSON.utf8))) ?? []) }
+        nonmutating set { if let data = try? JSONEncoder().encode(newValue.sorted()) { mainSleepIDsJSON = String(decoding: data, as: UTF8.self) } }
+    }
     @State private var choices: [SleepTrainingChoice] = []
     @State private var report: SleepTrainingInsightsReport?
     @State private var message = ""
@@ -70,7 +79,7 @@ struct SleepTrainingInsightsPage: View {
         }
         .task(id: date) { reload() }
         .onChange(of: period) { _, _ in reload() }
-        .onChange(of: selectedSource) { _, _ in selectedWindows = [:]; mainSleepIDs = []; reload() }
+        .onChange(of: selectedSource) { _, _ in reload() }
         .onChange(of: majorSeriesJSON) { _, _ in reload() }
     }
 
@@ -120,7 +129,9 @@ struct SleepTrainingInsightsPage: View {
         })
     }
     private func selectedChoice(_ day: String, options: [SleepTrainingChoice]) -> SleepTrainingChoice? {
-        if let id = selectedWindows[day] { return options.first { $0.id == id } }
+        // 別の取得元で選んだ区間が残っていても、この取得元の候補にないものは使わない。
+        if selectedWindows[day] == "" { return nil } // 本人が「未選択」に戻した日
+        if let id = selectedWindows[day], let chosen = options.first(where: { $0.id == id }) { return chosen }
         return options.count == 1 ? options.first : nil
     }
     private func windowSelection(_ day: String, options: [SleepTrainingChoice]) -> Binding<String> {

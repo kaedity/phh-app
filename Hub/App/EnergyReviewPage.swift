@@ -122,7 +122,7 @@ struct EnergyReviewPage: View {
             HubMockCard {
                 Text("実測からの維持量の推定").font(.headline)
                 Text("\(foodNumber(maintenance.estimatedMaintenanceKcal)) kcal / 日").font(.title2.bold())
-                Text("摂取の参照：\(maintenance.period.start) 〜 \(maintenance.period.end)（\(maintenance.period.dayCount)日）")
+                Text("摂取の参照：\(mockDay(maintenance.period.start)) 〜 \(mockDay(maintenance.period.end))（\(maintenance.period.dayCount)日）")
                     .font(.subheadline)
                 Text("平均摂取：\(foodNumber(maintenance.averageIntakeKcal)) kcal / 日").font(.subheadline)
                 weightAverage(maintenance.trend.before)

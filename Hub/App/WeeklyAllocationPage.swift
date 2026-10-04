@@ -9,8 +9,9 @@ struct WeeklyAllocationPage: View {
   @State private var selectedDate: Date
   @State private var report: WeeklyAllocationReport?
   @State private var trial: WeeklyAllocationPreview?
-  @State private var coefficient = ""
-  @State private var dailyCap = ""
+  // 合意前の試算値だが、開くたびに打ち直さないよう端末に残す（目標には使わない）。
+  @AppStorage("weeklyAllocation.trialCoefficient") private var coefficient = ""
+  @AppStorage("weeklyAllocation.trialDailyCap") private var dailyCap = ""
   @State private var message = ""
   @State private var usingPreview = false
 
@@ -60,7 +61,7 @@ struct WeeklyAllocationPage: View {
   private func summary(_ report: WeeklyAllocationReport) -> some View {
     HubMockCard {
       Text(usingPreview ? "架空データの週間集計" : "完了日の週間集計").font(.headline)
-      Text("\(report.weekStart) 〜 \(report.weekEnd)").font(.subheadline)
+      Text("\(mockDay(report.weekStart)) 〜 \(mockDay(report.weekEnd))").font(.subheadline)
       Text("計算に使えた日：\(report.includedDayCount)日 · 翌日以降の残り：\(report.remainingDayCount)日")
         .font(.caption).foregroundStyle(.secondary)
       if let difference = report.differenceKcal {

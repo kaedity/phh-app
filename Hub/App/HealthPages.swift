@@ -200,7 +200,7 @@ struct HealthDetailPage: View {
                     Text("AutoSleepの補完").font(.headline)
                     ForEach(autoSleep.filter { $0.targetDate == screen.date }.sorted { $0.receivedAt > $1.receivedAt }) { delivery in
                         VStack(alignment: .leading, spacing: 5) {
-                            Text("\(delivery.targetDate) · \(delivery.dictionary.rawValue)").font(.subheadline.weight(.semibold))
+                            Text("\(mockDay(delivery.targetDate)) · \(delivery.dictionary.rawValue)").font(.subheadline.weight(.semibold))
                             Text("実睡眠 \(sleepDuration(delivery.normalization.record?.actualSleepSeconds))").font(.subheadline)
                             Text(delivery.normalization.record == nil ? "要確認・原辞書を端末に保持" : "端末保存・独自指標は別に保持").font(.caption).foregroundStyle(.secondary)
                             if !delivery.normalization.issues.isEmpty { Text("未対応・単位未確認など \(delivery.normalization.issues.count)項目").font(.caption).foregroundStyle(.secondary) }

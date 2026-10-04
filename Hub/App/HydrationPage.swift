@@ -58,7 +58,7 @@ struct HydrationPage:View {
                 Button("設定を保存") {do {guard let ml=Double(add),goal.trimmingCharacters(in:.whitespaces).isEmpty || Double(goal) != nil else {throw HubError.invalidOperation};let p=try HydrationPreferences(addAmountML:ml,dailyGoalML:goal.isEmpty ? nil:Double(goal));WaterPreferences.save(p);preferences=p;settingsMessage="設定を保存しました"}catch{settingsMessage="0より大きい数値を入力してください。"}}
                 if !settingsMessage.isEmpty{Text(settingsMessage).font(.caption).foregroundStyle(.secondary)}
             }
-            Text("\(date)の記録").font(.headline)
+            Text("\(mockDay(date))の記録").font(.headline)
             ForEach(model.records.filter {!$0.removed && $0.date==date}){r in
                 HubMockCard{HStack{MockFigure(value:foodNumber(r.amountML),unit:"ml",size:24);Spacer();Text(model.pendingIDs.contains(r.id) ? "送信待ち":"同期済み").font(.caption).foregroundStyle(.secondary)};HStack{Button("変更"){editing=r};Spacer();Button("取消",role:.destructive){removing=r}}.disabled(model.pendingIDs.contains(r.id))}
             }

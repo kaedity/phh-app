@@ -73,7 +73,7 @@ struct MuscleRecoveryPage: View {
     @ViewBuilder private func activityCard(_ activity: MuscleRegionActivity) -> some View {
         HubMockCard {
             Text(activity.region.rawValue).font(.headline)
-            Text("前回の実施日：\(activity.latestDate)").font(.subheadline)
+            Text("前回の実施日：\(mockDay(activity.latestDate))").font(.subheadline)
             if let seconds = activity.elapsedSeconds, let time = activity.referenceTime {
                 Text("\(activity.timeBasis == .ended ? "終了" : "開始")から\(elapsed(seconds))")
                     .font(.title3.bold()).foregroundStyle(pine)
@@ -98,6 +98,7 @@ struct MuscleRecoveryPage: View {
     }
     private func elapsed(_ seconds: Double) -> String {
         let hours = Int(seconds / 3600)
+        if hours >= 48 { return "\(hours / 24)日\(hours % 24)時間" } // 2日以上は日で読む（成績・ホームと同じ区切り）
         return hours == 0 ? "\(Int(seconds / 60))分" : "\(hours)時間\(Int(seconds / 60) % 60)分"
     }
     private func reload() {
